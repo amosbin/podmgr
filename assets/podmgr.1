@@ -1,0 +1,297 @@
+.\" Manpage for podmgr.
+.TH PODMGR 1 "2026-06-27" "podmgr 1.0.1" "Rootless Podman system user manager"
+.SH NAME
+podmgr \- create and manage least-privileged host users for rootless Podman workloads
+.SH SYNOPSIS
+.B podmgr
+.I command
+.RI [ options ]
+.RB [ \-\-
+.IR cmd ...]
+.SH DESCRIPTION
+.B podmgr
+provisions and operates dedicated, least-privileged system users, each running
+its own rootless Podman instance. Every managed user receives an isolated home,
+a subordinate UID/GID range (allocated and committed via
+.BR fsubid (1)),
+.B systemd
+user-session linger, and a workload unit generated from a
+.B podman compose
+template or, when available, from Podman Quadlet sources.
+.PP
+The intent is per-workload isolation: a separate host user per trust boundary so
+that a container escape is contained to a single unprivileged account rather
+than the operator's primary user.
+.SH COMMANDS
+.SS User lifecycle
+.TP
+.B setup
+Create the system user and configure rootless Podman. Fails if the user already
+exists; use
+.B reinstall
+to reconfigure. Requires root.
+.TP
+.B cleanup
+Stop the workload, remove the user, and delete all associated state. Operates
+only on users carrying podmgr's marker file. Requires root.
+.TP
+.B reinstall
+Run
+.B cleanup
+followed by
+.BR setup .
+Requires root.
+.TP
+.B list
+List containers across all managed users. With
+.B \-\-all
+include stopped containers.
+.TP
+.B info
+Show one user's provisioning state: UID/GID, subuid/subgid range, linger,
+compose directory, marker, and container count.
+.TP
+.B status
+Report whether the user's workload service and Podman socket are active.
+.SS Podman engine
+.TP
+.B up
+Start the workload
+.RB ( "podman compose up -d" ).
+.RS
+Before execution,
+.B podmgr
+validates that the compose directory exists, is owned by the target user, and
+that
+.I COMPOSE_FILE
+exists and is readable by that user. When
+.I COMPOSE_FILE
+is set to
+.I compose.yaml
+or
+.I compose.yml
+, podmgr also accepts the other extension as a fallback.
+.RE
+.TP
+.B down
+Stop the workload
+.RB ( "podman compose down" ).
+.RS
+Uses the same compose preflight checks as
+.BR up .
+.RE
+.TP
+.B restart
+Stop then start the workload.
+.TP
+.B ps
+Show running containers.
+.TP
+.B stats
+Show a one-shot resource table per container. With
+.B \-\-df
+also report disk usage.
+.TP
+.B prune
+Reclaim space by removing unused containers, images, and networks. With
+.B \-\-all
+also remove unused images; with
+.B \-\-volumes
+also remove unused volumes.
+.SS User session
+.TP
+.B shell
+Open an interactive shell in the managed host user's session.
+.RS
+Commands that run with a compose working directory (for example
+.BR shell ", " run ", " exec ", and " run-in )
+validate compose directory ownership and accessibility first.
+.RE
+.TP
+.B run \-\- \fIcmd\fR ...
+Run an arbitrary command in the managed host user's session.
+.TP
+.B start \fR/\fB stop \fR/\fB kill
+Start or stop the user's workload service.
+.B kill
+is an alias of
+.BR stop .
+.TP
+.B journal
+Follow the user's journal. Requires root or membership in the
+.B systemd-journal
+group.
+.SS Container access
+.TP
+.B exec
+Open an interactive shell inside a running container, selecting
+.B bash
+or
+.B sh
+automatically. If no container is named, the first running one is used.
+.TP
+.B run\-in \-n \fIc\fB \-\- \fIcmd\fR ...
+Run a non-interactive command inside container
+.IR c .
+.TP
+.B clogs \-n \fIc
+Follow a container's logs.
+.TP
+.B cp \-\- \fIsrc dst
+Copy files to or from a container
+.RB ( "podman cp" ).
+.TP
+.B top \-n \fIc
+Show the process table inside a container.
+.SS Compose file management
+.TP
+.B adopt \-f \fIpath
+Copy a local file or directory into the user's compose directory and set
+ownership to the target user.
+.SS Subordinate IDs
+.TP
+.B subid
+Show the user's committed subuid/subgid allocation, as reported by
+.BR fsubid (1).
+.TP
+.B subid\-check
+Audit subordinate ID files for gaps and overlaps (delegated to
+.BR fsubid (1)).
+.TP
+.B subid\-reclaim
+Garbage-collect ranges of deleted users and stale reservations (delegated to
+.BR fsubid (1)).
+.SS Other
+.TP
+.B version
+Print the podmgr version.
+.SH OPTIONS
+.TP
+.BR \-u ", " \-\-user " " \fIname\fR
+Target system username. Required for all commands except
+.BR list ", " subid\-check ", " subid\-reclaim ", and " version .
+Must match
+.BR [a\-z_][a\-z0\-9_\-]{0,31} .
+.TP
+.BR \-c ", " \-\-compose\-dir " " \fIpath\fR
+Compose directory (default
+.IR PODMGR_BASE_DIR /compose/ \fIuser\fR).
+Must be absolute and inside
+.IR PODMGR_BASE_DIR .
+.TP
+.BR \-n ", " \-\-container " " \fIname\fR
+Target container for
+.BR exec ", " run\-in ", " clogs ", and " top .
+.TP
+.BR \-a ", " \-\-all
+For
+.BR list ,
+include stopped containers; for
+.BR prune ,
+also remove unused images.
+.TP
+.BR \-w ", " \-\-volumes
+For
+.BR prune ,
+also remove unused volumes.
+.TP
+.BR \-d ", " \-\-df
+For
+.BR stats ,
+also show disk usage.
+.TP
+.BR \-j ", " \-\-json
+For
+.BR list " and " users ,
+emit JSON output.
+.TP
+.BR \-f ", " \-\-file " " \fIpath\fR
+Source path for
+.B adopt .
+.TP
+.BR \-h ", " \-\-help
+Show usage and exit.
+.TP
+.B \-\-
+Pass all following arguments verbatim to the target command
+.RB ( run ", " run\-in ", " cp ).
+.SH CONFIGURATION
+.B podmgr
+reads
+.I /etc/podmgr.conf
+if present.
+.RS
+.TP
+.B LOG_DEST
+.BR file ", " journal ", or " both
+(default
+.BR file ).
+.TP
+.B LOG_FILE
+Log file path (default
+.IR /var/log/podmgr.log ).
+.TP
+.B PODMGR_BASE_DIR
+Base directory under which compose directories must reside (default
+.IR /srv/podmgr ).
+.TP
+.B COMPOSE_FILE
+Compose file name (default
+.IR compose.yaml ).
+.TP
+.B USE_QUADLET
+Prefer Podman Quadlet for unit generation when available.
+.RE
+.SH FILES
+.TP
+.I /etc/podmgr.conf
+Optional configuration.
+.TP
+.IR /var/lib/ user
+Managed user home and marker file.
+.TP
+.IR /srv/podmgr
+Shared base directory owned by the dedicated
+.B podmgr
+system user and group; the invoking sudo operator is added to that group when
+its identity can be validated from the sudo environment.
+.TP
+.IR /srv/podmgr/compose/ user
+Default per-user compose directory.
+.SH TROUBLESHOOTING
+.TP
+.B compose-dir does not exist
+Create the user first with
+.BR "podmgr setup -u <user>" ,
+or pass an existing path with
+.BR --compose-dir .
+.TP
+.B compose-dir must be owned by '<user>'
+Fix ownership of the per-user compose directory.
+.TP
+.B compose file must be owned by '<user>'
+Fix ownership of
+.I COMPOSE_FILE
+inside the compose directory.
+.TP
+.B compose-dir is not traversable / compose file is not readable
+Restore owner mode bits (directory owner execute bit, file owner read bit).
+.SH EXIT STATUS
+Returns 0 on success and non-zero on error. Lifecycle commands abort and roll
+back partial setup on failure.
+.SH SECURITY
+.B podmgr
+invokes external tools by absolute path with a sanitized environment and never
+passes user-controlled strings through a shell. Subordinate ID allocation and
+commit are delegated to
+.BR fsubid (1),
+which is the authoritative owner of
+.IR /etc/subuid " and " /etc/subgid .
+.SH SEE ALSO
+.BR fsubid (1),
+.BR podman (1),
+.BR podman\-compose (1),
+.BR loginctl (1),
+.BR systemctl (1)
+.SH AUTHOR
+Amine Tbaik <tbaik.amine@gmail.com>
