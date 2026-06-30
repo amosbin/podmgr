@@ -1,0 +1,16 @@
+{
+  "services": {
+    "traefik": {
+      "image": "traefik:v3.5",
+      "labels": {
+        "io.podmgr.relay.enabled": "true",
+        "io.podmgr.relay.mode": "discoverer",
+        "io.podmgr.relay.groups": "abc",
+        "io.podmgr.relay.source": "traefik",
+        "io.podmgr.relay.target": "app1",
+        "io.podmgr.relay.host": "app1.localhost",
+        "io.podmgr.relay.backend": "http://app1:3000"
+      }
+    }
+  }
+}

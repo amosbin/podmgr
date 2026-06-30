@@ -6,8 +6,30 @@ TARGET_NAME = podmgr
 OUTDIR      = ../../bin
 TARGET      = $(OUTDIR)/$(TARGET_NAME)
 
+RELAY_COLLECT_NAME   = podmgr-relay-collect
+RELAY_RECONCILE_NAME = podmgr-relay-reconcile
+RELAY_HUBD_NAME      = podmgr-relay-hubd
+RELAY_TENANTD_NAME   = podmgr-relay-tenantd
+RELAY_MERGE_NAME     = podmgr-relay-merge
+RELAY_COLLECT_TARGET = $(OUTDIR)/$(RELAY_COLLECT_NAME)
+RELAY_RECON_TARGET   = $(OUTDIR)/$(RELAY_RECONCILE_NAME)
+RELAY_HUBD_TARGET    = $(OUTDIR)/$(RELAY_HUBD_NAME)
+RELAY_TENANTD_TARGET = $(OUTDIR)/$(RELAY_TENANTD_NAME)
+RELAY_MERGE_TARGET   = $(OUTDIR)/$(RELAY_MERGE_NAME)
+
 SRCS = main.c config.c logging.c validation.c util.c commands.c
 OBJS = $(SRCS:.c=.o)
+
+RELAY_COLLECT_SRC = relay_collect.c
+RELAY_RECON_SRC   = relay_reconcile.c
+RELAY_HUBD_SRC    = relay_hubd.c
+RELAY_TENANTD_SRC = relay_tenantd.c
+RELAY_MERGE_SRC   = relay_merge.c
+RELAY_COLLECT_OBJ = $(RELAY_COLLECT_SRC:.c=.o)
+RELAY_RECON_OBJ   = $(RELAY_RECON_SRC:.c=.o)
+RELAY_HUBD_OBJ    = $(RELAY_HUBD_SRC:.c=.o)
+RELAY_TENANTD_OBJ = $(RELAY_TENANTD_SRC:.c=.o)
+RELAY_MERGE_OBJ   = $(RELAY_MERGE_SRC:.c=.o)
 
 PREFIX       ?= /usr/local
 BINDIR        = $(PREFIX)/bin
@@ -16,9 +38,29 @@ MANDIR        = $(PREFIX)/share/man/man1
 TPL_SRC       = ../../assets/podman-workload.service.tpl
 MAN_SRC       = ../../assets/podmgr.1
 
-all: $(TARGET)
+all: $(TARGET) $(RELAY_COLLECT_TARGET) $(RELAY_RECON_TARGET) $(RELAY_HUBD_TARGET) $(RELAY_TENANTD_TARGET) $(RELAY_MERGE_TARGET)
 
 $(TARGET): $(OBJS)
+	mkdir -p $(OUTDIR)
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(RELAY_COLLECT_TARGET): $(RELAY_COLLECT_OBJ)
+	mkdir -p $(OUTDIR)
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(RELAY_RECON_TARGET): $(RELAY_RECON_OBJ)
+	mkdir -p $(OUTDIR)
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(RELAY_HUBD_TARGET): $(RELAY_HUBD_OBJ)
+	mkdir -p $(OUTDIR)
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(RELAY_TENANTD_TARGET): $(RELAY_TENANTD_OBJ)
+	mkdir -p $(OUTDIR)
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(RELAY_MERGE_TARGET): $(RELAY_MERGE_OBJ)
 	mkdir -p $(OUTDIR)
 	$(CC) $(CFLAGS) -o $@ $^
 
@@ -47,6 +89,6 @@ uninstall:
 	rm -f $(DESTDIR)$(MANDIR)/podmgr.1
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(TARGET_NAME)
+	rm -f $(OBJS) $(RELAY_COLLECT_OBJ) $(RELAY_RECON_OBJ) $(RELAY_HUBD_OBJ) $(RELAY_TENANTD_OBJ) $(RELAY_MERGE_OBJ) $(TARGET) $(TARGET_NAME) $(RELAY_COLLECT_TARGET) $(RELAY_RECON_TARGET) $(RELAY_HUBD_TARGET) $(RELAY_TENANTD_TARGET) $(RELAY_MERGE_TARGET)
 
 .PHONY: all install uninstall clean
