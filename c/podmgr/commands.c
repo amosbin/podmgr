@@ -29,7 +29,7 @@
  * as bad as no definition at all — it would print "podmgr " with no
  * version. sizeof is allowed in _Static_assert (it's a compile-time
  * constant expression), so we use it to reject the empty-string
- * case at compile time. A real version like "1.0.3" is 6 bytes
+ * case at compile time. A real version like "1.0.4" is 6 bytes
  * (5 chars + NUL); an empty "" is 1. */
 _Static_assert(sizeof(PODMGR_VERSION) > 2,
     "PODMGR_VERSION is empty; pass VERSION=<x.y.z> to make "
