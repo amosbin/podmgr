@@ -23,7 +23,7 @@
 #include <signal.h>
 
 #ifndef PODMGR_VERSION
-#define PODMGR_VERSION "1.0.1-dev"
+#define PODMGR_VERSION "1.0.1"
 #endif
 
 typedef struct {
@@ -515,6 +515,52 @@ void do_setup(const char *user, const char *compose_dir)
     if (!ef) log_die("cannot write environment.d file: %s", strerror(errno));
     fprintf(ef, "XDG_RUNTIME_DIR=/run/user/%u\n", (unsigned)uid);
     fclose(ef);
+
+    /*
+     * Force the per-user default log driver to k8s-file.
+     *
+     * Why: on Ubuntu 24.04 + podman 4.9.x the distro-shipped default in
+     * /usr/share/containers/containers.conf is `journald`. With the journald
+     * driver, `podman logs` only returns data when the managed user's
+     * systemd --user instance is running and has a journal socket. podmgr
+     * intentionally does NOT start the user instance (lower attack surface,
+     * see ARCHITECTURE.md), so journald-logged containers would appear to
+     * have empty logs and break `podmgr clogs` for both live and post-mortem
+     * use cases.
+     *
+     * k8s-file writes to ~/.local/share/containers/storage/overlay-containers/
+     * <id>/userdata/ctr.log, a regular file `podman logs` reads directly. No
+     * user instance required. Survives container exit.
+     *
+     * Scoped to ~/.config/containers/containers.conf for this user only —
+     * does NOT touch /etc/containers, so other consumers on the host are
+     * unaffected.
+     */
+    char containers_conf_dir[PATH_MAX];
+    snprintf(containers_conf_dir, sizeof(containers_conf_dir),
+             "%s/.config/containers", home_dir);
+    if (makedirs_p(containers_conf_dir, 0755) != 0)
+        log_die("makedirs_p '%s': %s", containers_conf_dir, strerror(errno));
+
+    char containers_conf[PATH_MAX];
+    snprintf(containers_conf, sizeof(containers_conf),
+             "%s/containers.conf", containers_conf_dir);
+    FILE *cf = fopen(containers_conf, "w");
+    if (!cf)
+        log_die("cannot write per-user containers.conf '%s': %s",
+                containers_conf, strerror(errno));
+    fprintf(cf, "# Managed by podmgr. Do not edit by hand; rerun\n"
+                "# `podmgr setup -u %s` (or cleanup+setup) to regenerate.\n"
+                "#\n"
+                "# Forces the rootless podman default log driver away from\n"
+                "# `journald` to `k8s-file` so `podman logs` and `podmgr clogs`\n"
+                "# work without the user systemd instance being started. See\n"
+                "# `podmgr clogs --help` for the operational rationale.\n"
+                "\n"
+                "[containers]\n"
+                "log_driver = \"k8s-file\"\n",
+            user);
+    fclose(cf);
 
     /* Place managed marker. */
     char marker[PATH_MAX];
