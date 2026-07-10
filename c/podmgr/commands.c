@@ -23,8 +23,17 @@
 #include <signal.h>
 
 #ifndef PODMGR_VERSION
-#define PODMGR_VERSION "1.0.1"
+#error "PODMGR_VERSION not defined; build via the c/podmgr Makefile which sets -DPODMGR_VERSION=..."
 #endif
+/* A bare `-DPODMGR_VERSION=\"\"` (from `make` with no VERSION=) is just
+ * as bad as no definition at all — it would print "podmgr " with no
+ * version. sizeof is allowed in _Static_assert (it's a compile-time
+ * constant expression), so we use it to reject the empty-string
+ * case at compile time. A real version like "1.0.3" is 6 bytes
+ * (5 chars + NUL); an empty "" is 1. */
+_Static_assert(sizeof(PODMGR_VERSION) > 2,
+    "PODMGR_VERSION is empty; pass VERSION=<x.y.z> to make "
+    "(debian/rules does this via DEB_VERSION_UPSTREAM)");
 
 typedef struct {
     int active;

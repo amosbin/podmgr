@@ -1,6 +1,10 @@
 CC      = gcc
 CFLAGS  = -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2
-VERSION ?= 1.0.1
+# Default is intentionally blank so a bare `make` fails the compile (via
+# the #error in commands.c) instead of silently baking a stale version
+# string into the binary. Production builds always set VERSION= on the
+# command line (debian/rules does this via $(DEB_VERSION_UPSTREAM)).
+VERSION ?=
 CFLAGS  += -DPODMGR_VERSION=\"$(VERSION)\"
 TARGET_NAME = podmgr
 OUTDIR      = ../../bin
