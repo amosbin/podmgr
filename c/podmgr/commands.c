@@ -451,6 +451,55 @@ static int count_valid_quadlet_units(const char *dir)
     return valid;
 }
 
+/*
+ * Write the per-user containers.conf that pins the rootless default log
+ * driver to k8s-file (see the rationale comment at the call site in
+ * do_setup). Called from do_setup during provisioning and from do_up as
+ * a self-heal for users provisioned before this enforcement existed —
+ * without it their containers silently fall back to the distro default
+ * (`journald`), which yields empty `podman logs`/`podmgr clogs` output
+ * because podmgr does not start the user's journal socket.
+ *
+ * Idempotent: unconditionally rewrites the managed file. An explicit
+ * `logging:` driver in a compose file still takes precedence; this only
+ * sets podman's *default*. Note the driver is baked in at container
+ * creation, so pre-existing journald containers need a down+up to pick
+ * this up.
+ */
+static void write_user_containers_conf(const char *user, const char *home_dir,
+                                       uid_t uid, gid_t gid)
+{
+    char conf_dir[PATH_MAX];
+    snprintf(conf_dir, sizeof(conf_dir), "%s/.config/containers", home_dir);
+    if (makedirs_p(conf_dir, 0755) != 0)
+        log_die("makedirs_p '%s': %s", conf_dir, strerror(errno));
+
+    char conf_path[PATH_MAX];
+    snprintf(conf_path, sizeof(conf_path), "%s/containers.conf", conf_dir);
+    FILE *cf = fopen(conf_path, "w");
+    if (!cf)
+        log_die("cannot write per-user containers.conf '%s': %s",
+                conf_path, strerror(errno));
+    fprintf(cf, "# Managed by podmgr. Do not edit by hand; rerun\n"
+                "# `podmgr setup -u %s` (or cleanup+setup) to regenerate.\n"
+                "#\n"
+                "# Forces the rootless podman default log driver away from\n"
+                "# `journald` to `k8s-file` so `podman logs` and `podmgr clogs`\n"
+                "# work without the user systemd instance being started. See\n"
+                "# `podmgr clogs --help` for the operational rationale.\n"
+                "\n"
+                "[containers]\n"
+                "log_driver = \"k8s-file\"\n",
+            user);
+    fclose(cf);
+
+    /* Rootless podman runs as the managed user; hand it the files. */
+    if (chown(conf_dir, uid, gid) != 0)
+        log_die("chown '%s': %s", conf_dir, strerror(errno));
+    if (chown(conf_path, uid, gid) != 0)
+        log_die("chown '%s': %s", conf_path, strerror(errno));
+}
+
 /* ---- do_setup ----------------------------------------------------------- */
 
 void do_setup(const char *user, const char *compose_dir)
@@ -545,31 +594,7 @@ void do_setup(const char *user, const char *compose_dir)
      * does NOT touch /etc/containers, so other consumers on the host are
      * unaffected.
      */
-    char containers_conf_dir[PATH_MAX];
-    snprintf(containers_conf_dir, sizeof(containers_conf_dir),
-             "%s/.config/containers", home_dir);
-    if (makedirs_p(containers_conf_dir, 0755) != 0)
-        log_die("makedirs_p '%s': %s", containers_conf_dir, strerror(errno));
-
-    char containers_conf[PATH_MAX];
-    snprintf(containers_conf, sizeof(containers_conf),
-             "%s/containers.conf", containers_conf_dir);
-    FILE *cf = fopen(containers_conf, "w");
-    if (!cf)
-        log_die("cannot write per-user containers.conf '%s': %s",
-                containers_conf, strerror(errno));
-    fprintf(cf, "# Managed by podmgr. Do not edit by hand; rerun\n"
-                "# `podmgr setup -u %s` (or cleanup+setup) to regenerate.\n"
-                "#\n"
-                "# Forces the rootless podman default log driver away from\n"
-                "# `journald` to `k8s-file` so `podman logs` and `podmgr clogs`\n"
-                "# work without the user systemd instance being started. See\n"
-                "# `podmgr clogs --help` for the operational rationale.\n"
-                "\n"
-                "[containers]\n"
-                "log_driver = \"k8s-file\"\n",
-            user);
-    fclose(cf);
+    write_user_containers_conf(user, home_dir, uid, pw->pw_gid);
 
     /* Place managed marker. */
     char marker[PATH_MAX];
@@ -916,6 +941,16 @@ void do_reinstall(const char *user, const char *compose_dir)
 void do_up(const char *user, const char *compose_dir)
 {
     ensure_managed_user(user);
+    /*
+     * Self-heal the per-user log-driver enforcement before starting the
+     * stack: users provisioned before containers.conf enforcement existed
+     * never got the file (setup refuses existing users), leaving their
+     * containers on `journald` with empty `clogs` output.
+     */
+    struct passwd *pw = getpwnam(user);
+    if (!pw)
+        log_die("user '%s' not found", user);
+    write_user_containers_conf(user, pw->pw_dir, pw->pw_uid, pw->pw_gid);
     ensure_compose_runtime_ready(user, compose_dir, 1);
     char *argv[] = { PODMGR_BIN_PODMAN, "compose", "up", "-d", NULL };
     int ret = run_as_user(user, compose_dir, argv);
