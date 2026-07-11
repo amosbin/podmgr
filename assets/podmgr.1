@@ -14,8 +14,7 @@ provisions and operates dedicated, least-privileged system users, each running
 its own rootless Podman instance. Every managed user receives an isolated home,
 a subordinate UID/GID range (allocated and committed via
 .BR fsubid (1)),
-.B systemd
-user-session linger, and a workload unit generated from a
+a workload unit generated from a
 .B podman compose
 template or, when available, from Podman Quadlet sources.
 .PP
@@ -48,7 +47,7 @@ List containers across all managed users. With
 include stopped containers.
 .TP
 .B info
-Show one user's provisioning state: UID/GID, subuid/subgid range, linger,
+Show one user's provisioning state: UID/GID, subuid/subgid range,
 compose directory, marker, and container count.
 .TP
 .B status
@@ -106,6 +105,20 @@ Open an interactive shell in the managed host user's session.
 Commands that run with a compose working directory (for example
 .BR shell ", " run ", " exec ", and " run-in )
 validate compose directory ownership and accessibility first.
+.RE
+.TP
+.B enable
+Enable persistent autostart for the user's workload by enabling linger,
+starting the user manager, and running
+.B systemctl --user enable --now
+for both the workload service and
+.BR podman.socket .
+If the socket step fails, retry it manually:
+.PP
+.RS
+.EX
+sudo podmgr run -u <user> -- systemctl --user enable --now podman.socket
+.EE
 .RE
 .TP
 .B run \-\- \fIcmd\fR ...

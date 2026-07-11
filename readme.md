@@ -21,9 +21,9 @@ that can see everything that user can see.
 The stronger position is a dedicated host user per workload. An escape is then
 bounded by an account that owns nothing but that one workload. The difficulty is
 that standing up such a user correctly is tedious and error-prone: a system
-account, an `XDG_RUNTIME_DIR`, a committed subordinate UID/GID range, session
-linger, and a `systemd` user unit, repeated identically for every workload and
-torn down cleanly on removal.
+account, an `XDG_RUNTIME_DIR`, a committed subordinate UID/GID range, and a
+workload unit, repeated identically for every workload and torn down cleanly on
+removal.
 
 `podmgr` owns that lifecycle. It treats per-user separation as the default unit
 of isolation and makes creating, operating, and removing those users a single,
@@ -85,7 +85,7 @@ Commands are grouped by concern:
 | --- | --- |
 | User lifecycle | `setup`, `cleanup`, `reinstall`, `list`, `info`, `status` |
 | Podman engine | `up`, `down`, `restart`, `ps`, `stats`, `prune` |
-| User session | `shell`, `run`, `start`, `stop`, `kill`, `journal` |
+| User session | `shell`, `run`, `enable`, `start`, `stop`, `kill`, `journal` |
 | Container access | `exec`, `run-in`, `clogs`, `cp`, `top` |
 | Subordinate IDs | `subid`, `subid-check`, `subid-reclaim` |
 | Other | `version` |
@@ -99,8 +99,20 @@ group when that identity can be validated from `SUDO_USER`/`SUDO_UID`.
 Everything after `--` is passed verbatim to the target command for `run`,
 `run-in`, and `cp`. Host filesystem mounts and ACL preparation are out of scope;
 the operator prepares any additional bind-mount sources before or immediately
-after `setup`. `setup` provisions the user and installs the workload unit, but
-it does not start the workload; use `up` or `start` after setup.
+after `setup`. `setup` provisions the user and installs workload unit files, but
+it does not enable or start user services and does not enable linger by default.
+Use `up` or `start` explicitly after setup.
+
+When persistent autostart is desired for a managed user, run
+`podmgr enable -u <user>`. This opts that user into linger + user-service
+enablement and starts the workload service immediately.
+
+If `podmgr enable` warns that `podman.socket` could not be enabled, retry it
+manually for that user:
+
+```sh
+sudo podmgr run -u <user> -- systemctl --user enable --now podman.socket
+```
 
 ## Configuration
 

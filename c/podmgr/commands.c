@@ -590,8 +590,6 @@ void do_setup(const char *user, const char *compose_dir)
     struct passwd *pw = getpwnam(user);
     if (!pw) log_die("user '%s' not found after creation", user);
     uid_t uid = pw->pw_uid;
-    char uid_str[32];
-    snprintf(uid_str, sizeof(uid_str), "%u", (unsigned)uid);
 
     ensure_shared_base_access();
     ensure_compose_dir_ownership_or_absence(user, compose_dir);
@@ -665,11 +663,6 @@ void do_setup(const char *user, const char *compose_dir)
     /* Keep the management marker root-owned and outside the user's home. */
     char *chown_marker_dir[] = { PODMGR_BIN_CHOWN, "-R", "root:root", "/var/lib/podmgr", NULL };
     run_command(chown_marker_dir);
-
-    /* loginctl enable-linger */
-    char *linger[] = { PODMGR_BIN_LOGINCTL, "enable-linger", (char *)user, NULL };
-    if (run_command(linger) != 0)
-        log_die("failed to enable linger for '%s'", user);
 
     /* Allocate subuid/subgid via fsubid + usermod (under lock). */
     log_info("allocating subuid/subgid range for '%s'", user);
@@ -758,81 +751,13 @@ void do_setup(const char *user, const char *compose_dir)
         run_command(chown_unit);
     }
 
-    /* Start the per-user systemd instance. */
-    char user_at_service[64];
-    snprintf(user_at_service, sizeof(user_at_service), "user@%s.service", uid_str);
-    char *start_user[] = { PODMGR_BIN_SYSTEMCTL, "start", user_at_service, NULL };
-    if (run_command(start_user) != 0)
-        log_die("failed to start %s", user_at_service);
-
-    /* Wait up to 30 s for the runtime directory to appear. */
-    char runtime_dir[64];
-    snprintf(runtime_dir, sizeof(runtime_dir), "/run/user/%u", (unsigned)uid);
-    int waited = 0;
-    struct stat rst;
-    while (stat(runtime_dir, &rst) != 0 && waited < 30) {
-        char *failed_check[] = { PODMGR_BIN_SYSTEMCTL, "is-failed", user_at_service, NULL };
-        if (run_command(failed_check) == 0)
-            log_die("%s entered failed state while waiting for %s",
-                    user_at_service, runtime_dir);
-        sleep(1);
-        waited++;
-    }
-    if (stat(runtime_dir, &rst) != 0)
-        log_die("runtime dir %s never appeared after %ds", runtime_dir, waited);
-
-    /* daemon-reload, install the workload unit, and enable podman.socket. */
-    char *daemon_reload[] = { PODMGR_BIN_SYSTEMCTL, "--user", "daemon-reload", NULL };
-    if (run_as_user_home(user, daemon_reload) != 0)
-        log_die("systemctl --user daemon-reload failed for '%s'", user);
-
-    /*
-     * podman system migrate (best-effort). Deferred until here, after the
-     * per-user systemd instance is started and /run/user/<uid> is confirmed,
-     * so podman runs inside a live user session and uses the systemd cgroup
-     * manager instead of warning and falling back to cgroupfs.
-     */
-    char *migrate[] = { PODMGR_BIN_PODMAN, "system", "migrate", NULL };
-    if (run_as_user_home(user, migrate) != 0)
-        log_warn("podman system migrate reported an issue (continuing)");
-
     if (use_quadlet) {
-        /*
-         * Quadlet-generated units are named after the *.container file, not
-         * <user>.service. setup only provisions the user session and installs
-         * the source files; it does not start the workload.
-         *
-         * Verify the generator actually produced at least one unit: after
-         * daemon-reload, `systemctl --user list-unit-files` should report units
-         * whose source is the Quadlet dir. If none appear, the source files
-         * were structurally accepted by us but rejected by podman's generator,
-         * so we warn loudly rather than report a misleading success.
-         */
-        char *list_units[] = {
-            PODMGR_BIN_SYSTEMCTL, "--user", "list-units", "--all", "--type=service",
-            "--no-legend", "--plain", NULL
-        };
-        char *units_out = NULL;
-        run_as_user_home_capture_dyn(user, list_units, &units_out);
-        if (!units_out || units_out[0] == '\0')
-            log_warn("Quadlet was selected for '%s' but no user services are "
-                     "present after daemon-reload; check the unit files with "
-                     "'podman ... systemctl --user status'", user);
-        else
-            log_info("Quadlet units for '%s' were installed; start them explicitly after setup",
-                     user);
-        free(units_out);
+        log_info("Quadlet sources for '%s' were installed; user services are not "
+                 "started/enabled by setup", user);
     } else {
-        char *enable_svc[] = { PODMGR_BIN_SYSTEMCTL, "--user", "enable",
-                               service_name, NULL };
-        if (run_as_user_home(user, enable_svc) != 0)
-            log_die("failed to enable service '%s' for '%s'", service_name, user);
+        log_info("workload unit '%s' for '%s' was installed; setup does not enable "
+                 "or start user services", service_name, user);
     }
-
-    char *enable_sock[] = { PODMGR_BIN_SYSTEMCTL, "--user", "enable", "--now",
-                            "podman.socket", NULL };
-    if (run_as_user_home(user, enable_sock) != 0)
-        log_warn("could not enable podman.socket for '%s' (continuing)", user);
 
     g_setup_tx.active = 0;
     user_lock_release(lock_fd);
@@ -1019,6 +944,63 @@ void do_restart(const char *user, const char *compose_dir)
 {
     do_down(user, compose_dir);
     do_up(user, compose_dir);
+}
+
+void do_enable(const char *user)
+{
+    ensure_managed_user(user);
+
+    struct passwd *pw = getpwnam(user);
+    if (!pw)
+        log_die("user '%s' not found", user);
+
+    uid_t uid = pw->pw_uid;
+    char uid_str[32];
+    snprintf(uid_str, sizeof(uid_str), "%u", (unsigned)uid);
+
+    char *linger[] = { PODMGR_BIN_LOGINCTL, "enable-linger", (char *)user, NULL };
+    if (run_command(linger) != 0)
+        log_die("failed to enable linger for '%s'", user);
+
+    char user_at_service[64];
+    snprintf(user_at_service, sizeof(user_at_service), "user@%s.service", uid_str);
+    char *start_user[] = { PODMGR_BIN_SYSTEMCTL, "start", user_at_service, NULL };
+    if (run_command(start_user) != 0)
+        log_die("failed to start %s", user_at_service);
+
+    char runtime_dir[64];
+    snprintf(runtime_dir, sizeof(runtime_dir), "/run/user/%u", (unsigned)uid);
+    int waited = 0;
+    struct stat rst;
+    while (stat(runtime_dir, &rst) != 0 && waited < 30) {
+        char *failed_check[] = { PODMGR_BIN_SYSTEMCTL, "is-failed", user_at_service, NULL };
+        if (run_command(failed_check) == 0)
+            log_die("%s entered failed state while waiting for %s",
+                    user_at_service, runtime_dir);
+        sleep(1);
+        waited++;
+    }
+    if (stat(runtime_dir, &rst) != 0)
+        log_die("runtime dir %s never appeared after %ds", runtime_dir, waited);
+
+    char service_name[128];
+    snprintf(service_name, sizeof(service_name), "%s.service", user);
+
+    char *daemon_reload[] = { PODMGR_BIN_SYSTEMCTL, "--user", "daemon-reload", NULL };
+    if (run_as_user_home(user, daemon_reload) != 0)
+        log_die("systemctl --user daemon-reload failed for '%s'", user);
+
+    char *enable_svc[] = { PODMGR_BIN_SYSTEMCTL, "--user", "enable", "--now",
+                           service_name, NULL };
+    if (run_as_user_home(user, enable_svc) != 0)
+        log_die("failed to enable service '%s' for '%s'", service_name, user);
+
+    char *enable_sock[] = { PODMGR_BIN_SYSTEMCTL, "--user", "enable", "--now",
+                            "podman.socket", NULL };
+    if (run_as_user_home(user, enable_sock) != 0)
+        log_warn("could not enable podman.socket for '%s' (continuing)", user);
+
+    log_info("enabled persistent autostart for '%s'", user);
 }
 
 void do_start(const char *user)
