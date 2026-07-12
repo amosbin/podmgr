@@ -195,6 +195,23 @@ make VERSION=dev-autostart
 - Disabling the timer prevents automatic boot trigger.
 - Re-enabling restores automatic boot trigger.
 
+## Indexing and Fast Checks
+
+For IDE and agent indexing, the repo ships a compile database at
+`c/podmgr/compile_commands.json` and `.clangd` points clangd at it.
+
+When you only want parse/syntax validation (no binary build), run:
+
+```sh
+cd c/podmgr
+gcc -std=c11 -D_GNU_SOURCE -DPODMGR_VERSION='"1.3.0"' -I. -fsyntax-only \
+  main.c config.c logging.c validation.c util.c \
+  command_setup.c command_cleanup.c command_runtime.c \
+  command_container.c command_report.c
+```
+
+This validates the modular command sources quickly without linking/installing.
+
 ## Configuration
 
 `podmgr` reads `/etc/podmgr.conf` if present. All keys are optional and fall

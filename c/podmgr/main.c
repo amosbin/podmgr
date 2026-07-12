@@ -372,6 +372,10 @@ int main(int argc, char *argv[])
         }
     }
 
+    /*
+     * Dispatch stays centralized here for CLI discoverability. Command
+     * implementations are grouped by concern in command_*.c modules.
+     */
     switch (cmd) {
     case CMD_SETUP:       do_setup(user, compose);                          break;
     case CMD_CLEANUP:     do_cleanup(user, compose);                        break;

@@ -1,0 +1,52 @@
+[
+  {
+    "directory": "/Users/aminetbaik/Desktop/podmgr/c/podmgr",
+    "file": "main.c",
+    "command": "gcc -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2 -DPODMGR_VERSION=\"1.3.0\" -c -o main.o main.c"
+  },
+  {
+    "directory": "/Users/aminetbaik/Desktop/podmgr/c/podmgr",
+    "file": "config.c",
+    "command": "gcc -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2 -DPODMGR_VERSION=\"1.3.0\" -c -o config.o config.c"
+  },
+  {
+    "directory": "/Users/aminetbaik/Desktop/podmgr/c/podmgr",
+    "file": "logging.c",
+    "command": "gcc -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2 -DPODMGR_VERSION=\"1.3.0\" -c -o logging.o logging.c"
+  },
+  {
+    "directory": "/Users/aminetbaik/Desktop/podmgr/c/podmgr",
+    "file": "validation.c",
+    "command": "gcc -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2 -DPODMGR_VERSION=\"1.3.0\" -c -o validation.o validation.c"
+  },
+  {
+    "directory": "/Users/aminetbaik/Desktop/podmgr/c/podmgr",
+    "file": "util.c",
+    "command": "gcc -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2 -DPODMGR_VERSION=\"1.3.0\" -c -o util.o util.c"
+  },
+  {
+    "directory": "/Users/aminetbaik/Desktop/podmgr/c/podmgr",
+    "file": "command_setup.c",
+    "command": "gcc -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2 -DPODMGR_VERSION=\"1.3.0\" -c -o command_setup.o command_setup.c"
+  },
+  {
+    "directory": "/Users/aminetbaik/Desktop/podmgr/c/podmgr",
+    "file": "command_cleanup.c",
+    "command": "gcc -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2 -DPODMGR_VERSION=\"1.3.0\" -c -o command_cleanup.o command_cleanup.c"
+  },
+  {
+    "directory": "/Users/aminetbaik/Desktop/podmgr/c/podmgr",
+    "file": "command_runtime.c",
+    "command": "gcc -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2 -DPODMGR_VERSION=\"1.3.0\" -c -o command_runtime.o command_runtime.c"
+  },
+  {
+    "directory": "/Users/aminetbaik/Desktop/podmgr/c/podmgr",
+    "file": "command_container.c",
+    "command": "gcc -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2 -DPODMGR_VERSION=\"1.3.0\" -c -o command_container.o command_container.c"
+  },
+  {
+    "directory": "/Users/aminetbaik/Desktop/podmgr/c/podmgr",
+    "file": "command_report.c",
+    "command": "gcc -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2 -DPODMGR_VERSION=\"1.3.0\" -c -o command_report.o command_report.c"
+  }
+]

@@ -1,16 +1,18 @@
 CC      = gcc
 CFLAGS  = -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2
 # Default is intentionally blank so a bare `make` fails the compile (via
-# the #error in commands.c) instead of silently baking a stale version
+# the #error in command_setup.c) instead of silently baking a stale version
 # string into the binary. Production builds always set VERSION= on the
 # command line (debian/rules does this via $(DEB_VERSION_UPSTREAM)).
-VERSION ?= 1.1.0
+VERSION ?= 1.3.0
 CFLAGS  += -DPODMGR_VERSION=\"$(VERSION)\"
 TARGET_NAME = podmgr
 OUTDIR      = ../../bin
 TARGET      = $(OUTDIR)/$(TARGET_NAME)
 
-SRCS = main.c config.c logging.c validation.c util.c commands.c
+SRCS = main.c config.c logging.c validation.c util.c \
+	command_setup.c command_cleanup.c command_runtime.c \
+	command_container.c command_report.c
 OBJS = $(SRCS:.c=.o)
 
 PREFIX       ?= /usr/local
@@ -38,7 +40,11 @@ config.o:     config.c config.h
 logging.o:    logging.c logging.h config.h
 validation.o: validation.c validation.h logging.h config.h
 util.o:       util.c util.h logging.h config.h
-commands.o:   commands.c commands.h config.h logging.h validation.h util.h
+command_setup.o:   command_setup.c commands.h command_internal.h config.h logging.h validation.h util.h
+command_cleanup.o: command_cleanup.c commands.h config.h logging.h validation.h util.h
+command_runtime.o: command_runtime.c commands.h command_internal.h config.h logging.h validation.h util.h
+command_container.o: command_container.c commands.h config.h logging.h validation.h util.h
+command_report.o: command_report.c commands.h command_internal.h config.h logging.h validation.h util.h
 
 install: $(TARGET)
 	install -d $(DESTDIR)$(BINDIR)
