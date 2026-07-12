@@ -88,7 +88,7 @@ Commands are grouped by concern:
 | User session | `shell`, `run`, `enable`, `start`, `stop`, `kill`, `journal` |
 | Container access | `exec`, `run-in`, `clogs`, `cp`, `top` |
 | Subordinate IDs | `subid`, `subid-check`, `subid-reclaim` |
-| Other | `version` |
+| Other | `autostart`, `version` |
 
 The compose directory defaults to `PODMGR_BASE_DIR/compose/<user>` and must be
 absolute and inside `PODMGR_BASE_DIR`. `setup` creates this directory and
@@ -107,12 +107,93 @@ When persistent autostart is desired for a managed user, run
 `podmgr enable -u <user>`. This opts that user into linger + user-service
 enablement and starts the workload service immediately.
 
+For reboot recovery without enabling per-user linger, use label-gated
+`podmgr autostart`.
+`autostart` scans all managed users and runs `podmgr up -u <user>` only when
+any service in that user's stack has label `podmgr.autostart=true`.
+One labeled service opts in the whole stack.
+
+Example service-level label:
+
+```yaml
+services:
+  app:
+    image: ghcr.io/example/app:latest
+    labels:
+      - podmgr.autostart=true
+```
+
+Equivalent mapping form:
+
+```yaml
+services:
+  app:
+    image: ghcr.io/example/app:latest
+    labels:
+      podmgr.autostart: "true"
+```
+
+If a managed user's compose file is missing or cannot be inspected,
+`podmgr autostart` logs a warning for that user and continues scanning others.
+
+Install flow ships host-level units `podmgr-autostart.service` (oneshot) and
+`podmgr-autostart.timer` (scheduler trigger). Direct `make install` enables the
+timer by default when systemd is available.
+To opt out on a host:
+
+```sh
+sudo systemctl disable --now podmgr-autostart.timer
+```
+
+To re-enable:
+
+```sh
+sudo systemctl enable --now podmgr-autostart.timer
+```
+
+Fallback note: if your distribution package does not enable the timer in its
+post-install hook, run the re-enable command once after install.
+
+`podmgr enable` and `podmgr autostart` are complementary:
+- `enable`: per-user persistent systemd enablement + linger.
+- `autostart`: host-driven boot scan for stacks that explicitly opt in by label.
+
 If `podmgr enable` warns that `podman.socket` could not be enabled, retry it
 manually for that user:
 
 ```sh
 sudo podmgr run -u <user> -- systemctl --user enable --now podman.socket
 ```
+
+## Verification
+
+Basic verification steps for label-based reboot autostart:
+
+1. Build check:
+
+```sh
+cd c/podmgr
+make clean
+make VERSION=dev-autostart
+```
+
+2. CLI surface:
+
+```sh
+./../../bin/podmgr --help
+```
+
+3. Behavior checks:
+- Managed user with no `podmgr.autostart=true` label is skipped.
+- Managed user with the label starts with `compose up -d`.
+- One labeled service in a multi-service stack starts the whole stack.
+- One broken/missing stack logs a warning and does not block other users.
+
+4. Host timer checks:
+- `systemctl status podmgr-autostart.timer` shows enabled after direct install
+  (or after one explicit `systemctl enable --now` on package installs).
+- Disabling the timer prevents automatic boot trigger.
+- Re-enabling restores automatic boot trigger.
 
 ## Configuration
 
@@ -150,10 +231,10 @@ options may be added; existing ones will not be removed or repurposed in 1.x.
 
 - User lifecycle: `setup`, `cleanup`, `reinstall`, `list`, `info`, `status`
 - Podman engine: `up`, `down`, `restart`, `ps`, `stats`, `prune`
-- User session: `shell`, `run`, `start`, `stop`, `kill`, `journal`
+- User session: `shell`, `run`, `enable`, `start`, `stop`, `kill`, `journal`
 - Container access: `exec`, `run-in`, `clogs`, `cp`, `top`
 - Subordinate IDs: `subid`, `subid-check`, `subid-reclaim`
-- Other: `version`, `--help`
+- Other: `autostart`, `version`, `--help`
 
 `kill` is a permanent alias of `stop`.
 

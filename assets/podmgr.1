@@ -1,5 +1,5 @@
 .\" Manpage for podmgr.
-.TH PODMGR 1 "2026-07-11" "podmgr 1.0.6" "Rootless Podman system user manager"
+.TH PODMGR 1 "2026-07-12" "podmgr 1.0.6" "Rootless Podman system user manager"
 .SH NAME
 podmgr \- create and manage least-privileged host users for rootless Podman workloads
 .SH SYNOPSIS
@@ -176,13 +176,25 @@ Garbage-collect ranges of deleted users and stale reservations (delegated to
 .BR fsubid (1)).
 .SS Other
 .TP
+.B autostart
+Scan all podmgr-managed users and inspect each compose stack for service label
+.B podmgr.autostart=true
+.RB ( list
+or map label syntax).
+If any service in a user's stack has the label, podmgr starts that user's stack
+with
+.BR "podman compose up -d" .
+Users with missing/invalid compose files are warned and skipped; the scan
+continues for remaining users.
+Requires root.
+.TP
 .B version
 Print the podmgr version.
 .SH OPTIONS
 .TP
 .BR \-u ", " \-\-user " " \fIname\fR
 Target system username. Required for all commands except
-.BR list ", " subid\-check ", " subid\-reclaim ", and " version .
+.BR list ", " subid\-check ", " subid\-reclaim ", " autostart ", and " version .
 Must match
 .BR [a\-z_][a\-z0\-9_\-]{0,31} .
 .TP
@@ -228,6 +240,41 @@ Show usage and exit.
 .B \-\-
 Pass all following arguments verbatim to the target command
 .RB ( run ", " run\-in ", " cp ).
+.SH HOST INTEGRATION
+Package installs provide host-level systemd units:
+.TP
+.I /usr/lib/systemd/system/podmgr-autostart.service
+Oneshot service that runs
+.BR "podmgr autostart" .
+.TP
+.I /usr/lib/systemd/system/podmgr-autostart.timer
+Boot timer that triggers
+.IR podmgr-autostart.service .
+Direct source install enables this timer by default when systemd is available.
+If a distribution package does not enable it in post-install, enable it
+manually once.
+.PP
+Disable host boot autostart:
+.RS
+.EX
+sudo systemctl disable --now podmgr-autostart.timer
+.EE
+.RE
+Re-enable host boot autostart:
+.RS
+.EX
+sudo systemctl enable --now podmgr-autostart.timer
+.EE
+.RE
+.PP
+.B podmgr enable
+and
+.B podmgr autostart
+cover different use cases:
+.B enable
+opts a specific user into linger plus user-service persistence;
+.B autostart
+is host-driven and starts only stacks that opt in by compose label.
 .SH CONFIGURATION
 .B podmgr
 reads
@@ -271,6 +318,12 @@ its identity can be validated from the sudo environment.
 .TP
 .IR /srv/podmgr/compose/ user
 Default per-user compose directory.
+.TP
+.I /usr/lib/systemd/system/podmgr-autostart.service
+Host-level oneshot service unit.
+.TP
+.I /usr/lib/systemd/system/podmgr-autostart.timer
+Host-level timer unit.
 .SH TROUBLESHOOTING
 .TP
 .B compose-dir does not exist

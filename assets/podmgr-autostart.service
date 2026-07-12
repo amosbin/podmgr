@@ -1,0 +1,13 @@
+[Unit]
+Description=podmgr label-based stack autostart scan
+Documentation=man:podmgr(1)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podmgr autostart
+TimeoutStartSec=10min
+
+[Install]
+WantedBy=multi-user.target
