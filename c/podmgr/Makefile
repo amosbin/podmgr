@@ -19,6 +19,9 @@ DATADIR       = /usr/lib/podmgr
 MANDIR        = $(PREFIX)/share/man/man1
 TPL_SRC       = ../../assets/podman-workload.service.tpl
 MAN_SRC       = ../../assets/podmgr.1
+SYSTEMD_UNIT_DIR = /usr/lib/systemd/system
+AUTOSTART_SVC_SRC = ../../assets/podmgr-autostart.service
+AUTOSTART_TIMER_SRC = ../../assets/podmgr-autostart.timer
 
 all: $(TARGET)
 
@@ -44,11 +47,20 @@ install: $(TARGET)
 	install -m 644 $(TPL_SRC) $(DESTDIR)$(DATADIR)/podman-workload.service.tpl
 	install -d $(DESTDIR)$(MANDIR)
 	install -m 644 $(MAN_SRC) $(DESTDIR)$(MANDIR)/podmgr.1
+	install -d $(DESTDIR)$(SYSTEMD_UNIT_DIR)
+	install -m 644 $(AUTOSTART_SVC_SRC) $(DESTDIR)$(SYSTEMD_UNIT_DIR)/podmgr-autostart.service
+	install -m 644 $(AUTOSTART_TIMER_SRC) $(DESTDIR)$(SYSTEMD_UNIT_DIR)/podmgr-autostart.timer
+	if [ -z "$(DESTDIR)" ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then \
+		systemctl daemon-reload >/dev/null 2>&1 || true; \
+		systemctl enable --now podmgr-autostart.timer >/dev/null 2>&1 || true; \
+	fi
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/$(TARGET_NAME)
 	rm -f $(DESTDIR)$(DATADIR)/podman-workload.service.tpl
 	rm -f $(DESTDIR)$(MANDIR)/podmgr.1
+	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/podmgr-autostart.service
+	rm -f $(DESTDIR)$(SYSTEMD_UNIT_DIR)/podmgr-autostart.timer
 
 clean:
 	rm -f $(OBJS) $(TARGET) $(TARGET_NAME)

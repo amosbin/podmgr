@@ -18,6 +18,7 @@
 #include <sys/wait.h>
 #include <pwd.h>
 #include <grp.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <limits.h>
 #include <signal.h>
@@ -1898,4 +1899,273 @@ void do_users(int as_json)
     } else if (!printed) {
         printf("No podmgr-managed users found.\n");
     }
+}
+
+static int is_true_token(const char *v)
+{
+    if (!v || !*v)
+        return 0;
+
+    char tok[16];
+    size_t i = 0;
+    while (v[i] && i < sizeof(tok) - 1) {
+        if (isspace((unsigned char)v[i]) || v[i] == ',' || v[i] == '}' || v[i] == '#')
+            break;
+        tok[i] = (char)tolower((unsigned char)v[i]);
+        i++;
+    }
+    tok[i] = '\0';
+
+    if (strcmp(tok, "true") == 0)
+        return 1;
+    if (strcmp(tok, "\"true\"") == 0)
+        return 1;
+    if (strcmp(tok, "'true'") == 0)
+        return 1;
+    return 0;
+}
+
+static int service_line_has_autostart_label(const char *line)
+{
+    const char *key = "podmgr.autostart";
+    const char *p = strstr(line, key);
+    if (!p)
+        return 0;
+
+    p += strlen(key);
+    while (*p == ' ' || *p == '\t' || *p == '"' || *p == '\'')
+        p++;
+
+    if (*p != ':' && *p != '=')
+        return 0;
+    p++;
+    while (*p == ' ' || *p == '\t')
+        p++;
+
+    return is_true_token(p);
+}
+
+static int parse_autostart_optin_from_compose_config(const char *cfg)
+{
+    int in_services = 0;
+    const char *line = cfg;
+
+    while (*line) {
+        const char *nl = strchr(line, '\n');
+        size_t len = nl ? (size_t)(nl - line) : strlen(line);
+
+        char buf[4096];
+        size_t copy = len < sizeof(buf) - 1 ? len : sizeof(buf) - 1;
+        memcpy(buf, line, copy);
+        buf[copy] = '\0';
+
+        char *trim = buf;
+        int indent = 0;
+        while (*trim == ' ') {
+            indent++;
+            trim++;
+        }
+
+        if (*trim != '\0' && *trim != '#') {
+            if (!in_services) {
+                if (indent == 0 && strcmp(trim, "services:") == 0)
+                    in_services = 1;
+            } else {
+                if (indent == 0)
+                    break;
+                if (service_line_has_autostart_label(trim))
+                    return 1;
+            }
+        }
+
+        if (!nl)
+            break;
+        line = nl + 1;
+    }
+
+    return 0;
+}
+
+static int resolve_compose_file_for_user(const char *user,
+                                         const char *compose_dir,
+                                         char *out,
+                                         size_t outsz)
+{
+    const char *primary_name = g_cfg.compose_file;
+    const char *fallback_name = NULL;
+    if (strcmp(primary_name, "compose.yaml") == 0)
+        fallback_name = "compose.yml";
+    else if (strcmp(primary_name, "compose.yml") == 0)
+        fallback_name = "compose.yaml";
+
+    char primary_path[PATH_MAX];
+    if (snprintf(primary_path, sizeof(primary_path), "%s/%s",
+                 compose_dir, primary_name) >= (int)sizeof(primary_path))
+        return 0;
+
+    char *probe_primary[] = { PODMGR_BIN_TEST, "-r", primary_path, NULL };
+    if (run_as_user(user, compose_dir, probe_primary) == 0) {
+        snprintf(out, outsz, "%s", primary_path);
+        return 1;
+    }
+
+    if (!fallback_name)
+        return 0;
+
+    char fallback_path[PATH_MAX];
+    if (snprintf(fallback_path, sizeof(fallback_path), "%s/%s",
+                 compose_dir, fallback_name) >= (int)sizeof(fallback_path))
+        return 0;
+
+    char *probe_fallback[] = { PODMGR_BIN_TEST, "-r", fallback_path, NULL };
+    if (run_as_user(user, compose_dir, probe_fallback) == 0) {
+        snprintf(out, outsz, "%s", fallback_path);
+        return 1;
+    }
+    return 0;
+}
+
+static int user_has_autostart_label(const char *user,
+                                    const char *compose_dir,
+                                    int *had_error)
+{
+    *had_error = 0;
+
+    char compose_file[PATH_MAX];
+    if (!resolve_compose_file_for_user(user, compose_dir,
+                                       compose_file, sizeof(compose_file))) {
+        log_warn("autostart: skipping '%s': no readable compose file in '%s'",
+                 user, compose_dir);
+        return 0;
+    }
+
+    char *cfg_argv[] = {
+        PODMGR_BIN_PODMAN, "compose", "-f", compose_file, "config", NULL
+    };
+    char *cfg = NULL;
+    int rc = run_as_user_home_capture_dyn(user, cfg_argv, &cfg);
+    if (rc != 0 || !cfg) {
+        *had_error = 1;
+        log_warn("autostart: skipping '%s': cannot inspect compose labels (exit %d)",
+                 user, rc);
+        free(cfg);
+        return 0;
+    }
+
+    int opted_in = parse_autostart_optin_from_compose_config(cfg);
+    free(cfg);
+    return opted_in;
+}
+
+void do_autostart(void)
+{
+    char **users = NULL;
+    size_t user_count = 0, user_cap = 0;
+
+    DIR *d = opendir("/var/lib/podmgr/managed");
+    if (!d) {
+        if (errno == ENOENT) {
+            printf("No podmgr-managed users found.\n");
+            return;
+        }
+        log_die("cannot open /var/lib/podmgr/managed: %s", strerror(errno));
+    }
+
+    struct dirent *ent;
+    while ((ent = readdir(d))) {
+        if (ent->d_name[0] == '.')
+            continue;
+
+        char marker[PATH_MAX];
+        snprintf(marker, sizeof(marker), "/var/lib/podmgr/managed/%s", ent->d_name);
+
+        struct stat mst;
+        if (stat(marker, &mst) != 0 || !S_ISREG(mst.st_mode) || mst.st_uid != 0)
+            continue;
+
+        if (user_count == user_cap) {
+            size_t newcap = user_cap ? user_cap * 2 : 16;
+            char **tmp = realloc(users, newcap * sizeof(*users));
+            if (!tmp) {
+                closedir(d);
+                for (size_t i = 0; i < user_count; i++)
+                    free(users[i]);
+                free(users);
+                log_die("out of memory collecting managed users");
+            }
+            users = tmp;
+            user_cap = newcap;
+        }
+
+        users[user_count] = strdup(ent->d_name);
+        if (!users[user_count]) {
+            closedir(d);
+            for (size_t i = 0; i < user_count; i++)
+                free(users[i]);
+            free(users);
+            log_die("out of memory collecting managed users");
+        }
+        user_count++;
+    }
+    closedir(d);
+
+    if (user_count == 0) {
+        printf("No podmgr-managed users found.\n");
+        free(users);
+        return;
+    }
+
+    qsort(users, user_count, sizeof(*users), cmp_str);
+
+    size_t scanned = 0, opted_in = 0, started = 0, skipped = 0, failed = 0;
+
+    for (size_t i = 0; i < user_count; i++) {
+        const char *user = users[i];
+        if (!getpwnam(user)) {
+            skipped++;
+            continue;
+        }
+
+        scanned++;
+
+        char compose_dir[PATH_MAX];
+        if (snprintf(compose_dir, sizeof(compose_dir), "%s/compose/%s",
+                     g_cfg.base_dir, user) >= (int)sizeof(compose_dir)) {
+            failed++;
+            log_warn("autostart: skipping '%s': compose path too long", user);
+            continue;
+        }
+
+        int inspect_error = 0;
+        if (!user_has_autostart_label(user, compose_dir, &inspect_error)) {
+            if (inspect_error)
+                failed++;
+            else
+                skipped++;
+            continue;
+        }
+
+        opted_in++;
+
+        ensure_user_containers_conf(user);
+        char *up_argv[] = { PODMGR_BIN_PODMAN, "compose", "up", "-d", NULL };
+        int up_rc = run_as_user(user, compose_dir, up_argv);
+        if (up_rc != 0) {
+            failed++;
+            log_warn("autostart: compose up failed for '%s' (exit %d)", user, up_rc);
+            continue;
+        }
+
+        started++;
+    }
+
+    for (size_t i = 0; i < user_count; i++)
+        free(users[i]);
+    free(users);
+
+    printf("autostart summary: scanned=%zu opted_in=%zu started=%zu skipped=%zu failed=%zu\n",
+           scanned, opted_in, started, skipped, failed);
+
+    if (failed > 0)
+        log_die("autostart completed with %zu failure(s)", failed);
 }

@@ -44,6 +44,7 @@ typedef enum {
     CMD_SUBID,
     CMD_SUBID_CHECK,
     CMD_SUBID_RECLAIM,
+    CMD_AUTOSTART,
     CMD_VERSION
 } cmd_t;
 
@@ -78,6 +79,7 @@ static int parse_command(const char *s, cmd_t *out)
     else if (strcmp(s, "subid") == 0) *out = CMD_SUBID;
     else if (strcmp(s, "subid-check") == 0) *out = CMD_SUBID_CHECK;
     else if (strcmp(s, "subid-reclaim") == 0) *out = CMD_SUBID_RECLAIM;
+    else if (strcmp(s, "autostart") == 0) *out = CMD_AUTOSTART;
     else if (strcmp(s, "version") == 0) *out = CMD_VERSION;
     else return 0;
     return 1;
@@ -157,6 +159,8 @@ static void show_usage(void)
         "    subid-reclaim  Garbage-collect ranges of deleted users + stale reservations\n"
         "\n"
         "  GLOBAL / OPERATIONAL (no single user)\n"
+        "    autostart    Scan managed users and run 'up' only for stacks\n"
+        "                 opted in via service label podmgr.autostart=true\n"
         "    version      Print podmgr version\n"
         "\n"
         "OPTIONS:\n"
@@ -182,7 +186,7 @@ static void show_usage(void)
         "  setup        Provisions the user and installs units; it does not\n"
         "               start the workload. Hard-fails if the user already\n"
         "               exists; use 'reinstall'.\n"
-        "  setup/cleanup/reinstall/adopt must be run as root.\n"
+        "  setup/cleanup/reinstall/adopt/autostart must be run as root.\n"
         "  cleanup/reinstall only operate on users that carry podmgr's marker file.\n"
         "  journal      Requires root or membership in the 'systemd-journal' group.\n"
         "  kill         Kept as an alias of 'stop'.\n"
@@ -309,15 +313,17 @@ int main(int argc, char *argv[])
      * sudo rights, re-exec the whole command under sudo instead of failing.
      */
     if (cmd == CMD_SETUP || cmd == CMD_CLEANUP || cmd == CMD_REINSTALL ||
-        cmd == CMD_ADOPT) {
+        cmd == CMD_ADOPT || cmd == CMD_AUTOSTART) {
         const char *cmd_name = cmd == CMD_SETUP   ? "setup"   :
                                cmd == CMD_CLEANUP ? "cleanup" :
-                               cmd == CMD_REINSTALL ? "reinstall" : "adopt";
+                               cmd == CMD_REINSTALL ? "reinstall" :
+                               cmd == CMD_ADOPT ? "adopt" : "autostart";
         ensure_root_or_reexec_sudo(cmd_name, argc, argv);
     }
 
     int need_user =
                     !(cmd == CMD_LIST || cmd == CMD_USERS || cmd == CMD_VERSION ||
+          cmd == CMD_AUTOSTART ||
           cmd == CMD_SUBID_CHECK || cmd == CMD_SUBID_RECLAIM);
 
     int need_compose =
@@ -396,6 +402,7 @@ int main(int argc, char *argv[])
     case CMD_SUBID:       do_subid(user);                                   break;
     case CMD_SUBID_CHECK: do_subid_check();                                 break;
     case CMD_SUBID_RECLAIM: do_subid_reclaim();                             break;
+    case CMD_AUTOSTART:   do_autostart();                                   break;
     case CMD_VERSION:     do_version();                                     break;
     default:              log_die("unsupported command");
     }

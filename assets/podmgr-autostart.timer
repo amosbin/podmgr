@@ -1,0 +1,12 @@
+[Unit]
+Description=Run podmgr autostart shortly after boot
+Documentation=man:podmgr(1)
+
+[Timer]
+OnBootSec=45s
+AccuracySec=15s
+Persistent=true
+Unit=podmgr-autostart.service
+
+[Install]
+WantedBy=timers.target

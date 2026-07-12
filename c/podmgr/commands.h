@@ -73,6 +73,7 @@ void do_info(const char *user, const char *compose_dir);
 void do_subid(const char *user);
 void do_subid_check(void);
 void do_subid_reclaim(void);
+void do_autostart(void);
 
 /* Print podmgr version. */
 void do_version(void);
