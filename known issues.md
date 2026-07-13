@@ -55,3 +55,24 @@ networks:
   1. user file integrity and ownership
   2. clear, explicit user control over networking choices
   3. root cause is dependency/runtime behavior, not a user compose syntax defect
+
+## unqualified image names fail when host registries are unset
+
+### issue
+
+On hosts with no unqualified-search registries configured, unqualified image
+names (for example `nginx:alpine`) can fail to resolve.
+
+### podmgr behavior
+
+podmgr now writes a per-managed-user `registries.conf` default under the
+managed user's container config directory. By default this sets unqualified
+resolution to `docker.io` for podmgr-managed users only.
+
+Compose files remain untouched. Fully-qualified image names in compose always
+take precedence over defaults.
+
+### recommendation
+
+Use fully-qualified image names in compose when possible for explicit source
+control and portability.

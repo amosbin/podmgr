@@ -201,6 +201,10 @@ static void show_usage(void)
         "  LOG_DEST=file|journal|both   (default: file)\n"
         "  LOG_FILE=/var/log/podmgr.log (default)\n"
         "  PODMGR_BASE_DIR=/srv/podmgr   (default)\n"
+        "  COMPOSE_FILE=compose.yaml     (default)\n"
+        "  USE_QUADLET=true|false        (default: false)\n"
+        "  DEFAULT_REGISTRY_ENABLE=true|false (default: true)\n"
+        "  DEFAULT_UNQUALIFIED_REGISTRY=docker.io (default)\n"
     );
     exit(0);
 }

@@ -204,7 +204,7 @@ When you only want parse/syntax validation (no binary build), run:
 
 ```sh
 cd c/podmgr
-gcc -std=c11 -D_GNU_SOURCE -DPODMGR_VERSION='"1.3.0"' -I. -fsyntax-only \
+gcc -std=c11 -D_GNU_SOURCE -DPODMGR_VERSION='"1.4.0"' -I. -fsyntax-only \
   main.c config.c logging.c validation.c util.c \
   command_setup.c command_cleanup.c command_runtime.c \
   command_container.c command_report.c
@@ -224,6 +224,12 @@ back to compiled-in defaults.
 | `PODMGR_BASE_DIR` | `/srv/podmgr` | Base directory for compose directories |
 | `COMPOSE_FILE` | `compose.yaml` | Compose file name |
 | `USE_QUADLET` | off | Prefer Podman Quadlet when available |
+| `DEFAULT_REGISTRY_ENABLE` | on | Manage per-user unqualified image registry defaults |
+| `DEFAULT_UNQUALIFIED_REGISTRY` | `docker.io` | Default registry used for unqualified image names |
+
+Registry defaults are written only under each managed user's container config
+directory. Compose files are never mutated. Fully-qualified image names in
+compose remain authoritative and are not rewritten by these defaults.
 
 ## fsubid integration
 
@@ -265,7 +271,8 @@ forms are both stable.
 ### Configuration keys
 
 The `/etc/podmgr.conf` keys `LOG_DEST`, `LOG_FILE`, `PODMGR_BASE_DIR`,
-`COMPOSE_FILE`, and `USE_QUADLET`, with their documented
+`COMPOSE_FILE`, `USE_QUADLET`, `DEFAULT_REGISTRY_ENABLE`, and
+`DEFAULT_UNQUALIFIED_REGISTRY`, with their documented
 defaults, are stable. Unknown keys are ignored.
 
 ### Exit status

@@ -1,5 +1,5 @@
 .\" Manpage for podmgr.
-.TH PODMGR 1 "2026-07-12" "podmgr 1.3.0" "Rootless Podman system user manager"
+.TH PODMGR 1 "2026-07-13" "podmgr 1.4.0" "Rootless Podman system user manager"
 .SH NAME
 podmgr \- create and manage least-privileged host users for rootless Podman workloads
 .SH SYNOPSIS
@@ -301,6 +301,17 @@ Compose file name (default
 .TP
 .B USE_QUADLET
 Prefer Podman Quadlet for unit generation when available.
+.TP
+.B DEFAULT_REGISTRY_ENABLE
+Enable per-user defaults for unqualified image registry resolution.
+When enabled, podmgr manages a per-user registries config under the
+managed user's home.
+.TP
+.B DEFAULT_UNQUALIFIED_REGISTRY
+Registry used for unqualified image names (default
+.IR docker.io ).
+Compose files are not modified; fully-qualified image references in
+compose remain authoritative.
 .RE
 .SH FILES
 .TP

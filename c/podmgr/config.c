@@ -37,7 +37,11 @@ void config_load(void)
     snprintf(g_cfg.marker_name,    sizeof(g_cfg.marker_name),    "%s", DEFAULT_MARKER_NAME);
     snprintf(g_cfg.template_dir,   sizeof(g_cfg.template_dir),   "%s", DEFAULT_TEMPLATE_DIR);
     snprintf(g_cfg.compose_file,   sizeof(g_cfg.compose_file),   "%s", DEFAULT_COMPOSE_FILE);
+    snprintf(g_cfg.default_unqualified_registry,
+             sizeof(g_cfg.default_unqualified_registry),
+             "%s", DEFAULT_UNQUALIFIED_REGISTRY);
     g_cfg.use_quadlet = 0;
+    g_cfg.default_registry_enable = 1;
 
     FILE *f = fopen(CONF_FILE, "r");
     if (!f) return;
@@ -67,6 +71,13 @@ void config_load(void)
         else if (strcmp(key, "USE_QUADLET")     == 0)
             g_cfg.use_quadlet = (strcmp(val, "1") == 0 || strcmp(val, "true") == 0 ||
                                  strcmp(val, "yes") == 0);
+        else if (strcmp(key, "DEFAULT_UNQUALIFIED_REGISTRY") == 0)
+            set_field(key, g_cfg.default_unqualified_registry,
+                      sizeof(g_cfg.default_unqualified_registry), val);
+        else if (strcmp(key, "DEFAULT_REGISTRY_ENABLE") == 0)
+            g_cfg.default_registry_enable =
+                (strcmp(val, "1") == 0 || strcmp(val, "true") == 0 ||
+                 strcmp(val, "yes") == 0);
     }
     fclose(f);
 }

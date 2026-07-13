@@ -477,6 +477,54 @@ static void format_containers_conf(char *buf, size_t sz, const char *user)
 }
 
 /*
+ * TOML-escape a single string value for registries.conf output.
+ */
+static void toml_escape_string(const char *src, char *dst, size_t dstsz)
+{
+    size_t di = 0;
+    for (size_t si = 0; src[si] != '\0' && di + 1 < dstsz; si++) {
+        char c = src[si];
+        if ((c == '\\' || c == '"') && di + 2 < dstsz) {
+            dst[di++] = '\\';
+            dst[di++] = c;
+            continue;
+        }
+        if (c == '\n' || c == '\r') {
+            if (di + 2 < dstsz) {
+                dst[di++] = '\\';
+                dst[di++] = 'n';
+            }
+            continue;
+        }
+        dst[di++] = c;
+    }
+    dst[di] = '\0';
+}
+
+/*
+ * Render the per-user registries.conf content that defines unqualified image
+ * resolution defaults for managed users only. Compose files remain untouched;
+ * fully-qualified image names in compose continue to be authoritative.
+ */
+static void format_registries_conf(char *buf, size_t sz, const char *user)
+{
+    char escaped_registry[512];
+    toml_escape_string(g_cfg.default_unqualified_registry,
+                       escaped_registry, sizeof(escaped_registry));
+
+    snprintf(buf, sz,
+             "# Managed by podmgr. Do not edit by hand; rerun\n"
+             "# `podmgr setup -u %s` (or cleanup+setup) to regenerate.\n"
+             "#\n"
+             "# Provides managed-user defaults for unqualified image names\n"
+             "# (for example `nginx:alpine`). Fully-qualified image names\n"
+             "# in compose files always take precedence.\n"
+             "\n"
+             "unqualified-search-registries = [\"%s\"]\n",
+             user, escaped_registry);
+}
+
+/*
  * Write the per-user containers.conf that pins the rootless default log
  * driver to k8s-file (see the rationale comment at the call site in
  * do_setup). Provisioning-time variant: do_setup runs privileged and the
@@ -517,6 +565,48 @@ static void write_user_containers_conf(const char *user, const char *home_dir,
 }
 
 /*
+ * Write the per-user registries.conf file (or remove it when defaults are
+ * disabled). Setup-time variant: runs while the home skeleton is still
+ * root-owned and then hands ownership back to the managed user.
+ */
+static void write_user_registries_conf(const char *user, const char *home_dir,
+                                       uid_t uid, gid_t gid)
+{
+    char conf_dir[PATH_MAX];
+    snprintf(conf_dir, sizeof(conf_dir), "%s/.config/containers", home_dir);
+    if (makedirs_p(conf_dir, 0755) != 0)
+        log_die("makedirs_p '%s': %s", conf_dir, strerror(errno));
+
+    char conf_path[PATH_MAX];
+    snprintf(conf_path, sizeof(conf_path), "%s/registries.conf", conf_dir);
+
+    if (!g_cfg.default_registry_enable ||
+        g_cfg.default_unqualified_registry[0] == '\0') {
+        if (unlink(conf_path) != 0 && errno != ENOENT)
+            log_die("cannot remove per-user registries.conf '%s': %s",
+                    conf_path, strerror(errno));
+        if (chown(conf_dir, uid, gid) != 0)
+            log_die("chown '%s': %s", conf_dir, strerror(errno));
+        return;
+    }
+
+    FILE *rf = fopen(conf_path, "w");
+    if (!rf)
+        log_die("cannot write per-user registries.conf '%s': %s",
+                conf_path, strerror(errno));
+
+    char content[2048];
+    format_registries_conf(content, sizeof(content), user);
+    fputs(content, rf);
+    fclose(rf);
+
+    if (chown(conf_dir, uid, gid) != 0)
+        log_die("chown '%s': %s", conf_dir, strerror(errno));
+    if (chown(conf_path, uid, gid) != 0)
+        log_die("chown '%s': %s", conf_path, strerror(errno));
+}
+
+/*
  * Up-time self-heal variant. podmgr's operational commands are invoked
  * WITHOUT root: privilege only enters through the narrow sudo-as-user
  * path (build_sudo_prefix) that every per-user podman call already uses.
@@ -539,16 +629,32 @@ void ensure_user_containers_conf(const char *user)
     char content[1024];
     format_containers_conf(content, sizeof(content), user);
 
+    char reg_content[2048];
+    format_registries_conf(reg_content, sizeof(reg_content), user);
+
+    const char *registry_enabled =
+        (g_cfg.default_registry_enable &&
+         g_cfg.default_unqualified_registry[0] != '\0') ? "1" : "0";
+
     char *argv[] = {
         "/bin/sh", "-c",
         "mkdir -p -- \"$HOME/.config/containers\" && "
-        "printf '%s' \"$1\" > \"$HOME/.config/containers/containers.conf\"",
-        "sh", content, NULL
+        "printf '%s' \"$1\" > \"$HOME/.config/containers/containers.conf\" && "
+        "if [ \"$2\" = \"1\" ]; then "
+        "  printf '%s' \"$3\" > \"$HOME/.config/containers/registries.conf\"; "
+        "else "
+        "  rm -f -- \"$HOME/.config/containers/registries.conf\"; "
+        "fi",
+        "sh", content, (char *)registry_enabled, reg_content, NULL
     };
-    if (run_as_user(user, home, argv) != 0)
+    if (run_as_user(user, home, argv) != 0) {
         log_warn("could not refresh containers.conf for '%s'; "
                  "containers may fall back to the journald log driver "
                  "(empty 'podmgr clogs' output)", user);
+        if (registry_enabled[0] == '1')
+            log_warn("could not refresh registries.conf for '%s'; "
+                     "unqualified image pulls may fail", user);
+    }
 }
 
 /* ---- do_setup ----------------------------------------------------------- */
@@ -644,6 +750,7 @@ void do_setup(const char *user, const char *compose_dir)
      * unaffected.
      */
     write_user_containers_conf(user, home_dir, uid, pw->pw_gid);
+    write_user_registries_conf(user, home_dir, uid, pw->pw_gid);
 
     /* Place managed marker. */
     char marker[PATH_MAX];
