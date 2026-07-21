@@ -103,63 +103,6 @@ void do_restart(const char *user, const char *compose_dir)
     do_up(user, compose_dir);
 }
 
-void do_enable(const char *user)
-{
-    ensure_managed_user(user);
-
-    struct passwd *pw = getpwnam(user);
-    if (!pw)
-        log_die("user '%s' not found", user);
-
-    uid_t uid = pw->pw_uid;
-    char uid_str[32];
-    snprintf(uid_str, sizeof(uid_str), "%u", (unsigned)uid);
-
-    char *linger[] = { PODMGR_BIN_LOGINCTL, "enable-linger", (char *)user, NULL };
-    if (run_command(linger) != 0)
-        log_die("failed to enable linger for '%s'", user);
-
-    char user_at_service[64];
-    snprintf(user_at_service, sizeof(user_at_service), "user@%s.service", uid_str);
-    char *start_user[] = { PODMGR_BIN_SYSTEMCTL, "start", user_at_service, NULL };
-    if (run_command(start_user) != 0)
-        log_die("failed to start %s", user_at_service);
-
-    char runtime_dir[64];
-    snprintf(runtime_dir, sizeof(runtime_dir), "/run/user/%u", (unsigned)uid);
-    int waited = 0;
-    struct stat rst;
-    while (stat(runtime_dir, &rst) != 0 && waited < 30) {
-        char *failed_check[] = { PODMGR_BIN_SYSTEMCTL, "is-failed", user_at_service, NULL };
-        if (run_command(failed_check) == 0)
-            log_die("%s entered failed state while waiting for %s",
-                    user_at_service, runtime_dir);
-        sleep(1);
-        waited++;
-    }
-    if (stat(runtime_dir, &rst) != 0)
-        log_die("runtime dir %s never appeared after %ds", runtime_dir, waited);
-
-    char service_name[128];
-    snprintf(service_name, sizeof(service_name), "%s.service", user);
-
-    char *daemon_reload[] = { PODMGR_BIN_SYSTEMCTL, "--user", "daemon-reload", NULL };
-    if (run_as_user_home(user, daemon_reload) != 0)
-        log_die("systemctl --user daemon-reload failed for '%s'", user);
-
-    char *enable_svc[] = { PODMGR_BIN_SYSTEMCTL, "--user", "enable", "--now",
-                           service_name, NULL };
-    if (run_as_user_home(user, enable_svc) != 0)
-        log_die("failed to enable service '%s' for '%s'", service_name, user);
-
-    char *enable_sock[] = { PODMGR_BIN_SYSTEMCTL, "--user", "enable", "--now",
-                            "podman.socket", NULL };
-    if (run_as_user_home(user, enable_sock) != 0)
-        log_warn("could not enable podman.socket for '%s' (continuing)", user);
-
-    log_info("enabled persistent autostart for '%s'", user);
-}
-
 void do_start(const char *user)
 {
     ensure_managed_user(user);

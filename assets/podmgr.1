@@ -1,5 +1,5 @@
 .\" Manpage for podmgr.
-.TH PODMGR 1 "2026-07-13" "podmgr 1.4.0" "Rootless Podman system user manager"
+.TH PODMGR 1 "2026-07-21" "podmgr 1.5.0" "Rootless Podman system user manager"
 .SH NAME
 podmgr \- create and manage least-privileged host users for rootless Podman workloads
 .SH SYNOPSIS
@@ -14,7 +14,8 @@ provisions and operates dedicated, least-privileged system users, each running
 its own rootless Podman instance. Every managed user receives an isolated home,
 a subordinate UID/GID range (allocated and committed via
 .BR fsubid (1)),
-a workload unit generated from a
+.B systemd
+user-session linger, and a workload unit generated from a
 .B podman compose
 template or, when available, from Podman Quadlet sources.
 .PP
@@ -47,7 +48,7 @@ List containers across all managed users. With
 include stopped containers.
 .TP
 .B info
-Show one user's provisioning state: UID/GID, subuid/subgid range,
+Show one user's provisioning state: UID/GID, subuid/subgid range, linger,
 compose directory, marker, and container count.
 .TP
 .B status
@@ -105,20 +106,6 @@ Open an interactive shell in the managed host user's session.
 Commands that run with a compose working directory (for example
 .BR shell ", " run ", " exec ", and " run-in )
 validate compose directory ownership and accessibility first.
-.RE
-.TP
-.B enable
-Enable persistent autostart for the user's workload by enabling linger,
-starting the user manager, and running
-.B systemctl --user enable --now
-for both the workload service and
-.BR podman.socket .
-If the socket step fails, retry it manually:
-.PP
-.RS
-.EX
-sudo podmgr run -u <user> -- systemctl --user enable --now podman.socket
-.EE
 .RE
 .TP
 .B run \-\- \fIcmd\fR ...
@@ -266,15 +253,6 @@ Re-enable host boot autostart:
 sudo systemctl enable --now podmgr-autostart.timer
 .EE
 .RE
-.PP
-.B podmgr enable
-and
-.B podmgr autostart
-cover different use cases:
-.B enable
-opts a specific user into linger plus user-service persistence;
-.B autostart
-is host-driven and starts only stacks that opt in by compose label.
 .SH CONFIGURATION
 .B podmgr
 reads

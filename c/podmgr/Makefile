@@ -4,7 +4,7 @@ CFLAGS  = -Wall -Wextra -std=c11 -D_GNU_SOURCE -O2
 # the #error in command_setup.c) instead of silently baking a stale version
 # string into the binary. Production builds always set VERSION= on the
 # command line (debian/rules does this via $(DEB_VERSION_UPSTREAM)).
-VERSION ?= 1.4.0
+VERSION ?= 1.5.0
 CFLAGS  += -DPODMGR_VERSION=\"$(VERSION)\"
 TARGET_NAME = podmgr
 OUTDIR      = ../../bin

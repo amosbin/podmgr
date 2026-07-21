@@ -20,7 +20,6 @@ void do_down(const char *user, const char *compose_dir);
 void do_restart(const char *user, const char *compose_dir);
 
 /* systemctl --user start/stop <user>.service */
-void do_enable(const char *user);
 void do_start(const char *user);
 void do_stop(const char *user);
 

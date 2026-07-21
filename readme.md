@@ -21,9 +21,9 @@ that can see everything that user can see.
 The stronger position is a dedicated host user per workload. An escape is then
 bounded by an account that owns nothing but that one workload. The difficulty is
 that standing up such a user correctly is tedious and error-prone: a system
-account, an `XDG_RUNTIME_DIR`, a committed subordinate UID/GID range, and a
-workload unit, repeated identically for every workload and torn down cleanly on
-removal.
+account, an `XDG_RUNTIME_DIR`, a committed subordinate UID/GID range, session
+linger, and a `systemd` user unit, repeated identically for every workload and
+torn down cleanly on removal.
 
 `podmgr` owns that lifecycle. It treats per-user separation as the default unit
 of isolation and makes creating, operating, and removing those users a single,
@@ -85,7 +85,7 @@ Commands are grouped by concern:
 | --- | --- |
 | User lifecycle | `setup`, `cleanup`, `reinstall`, `list`, `info`, `status` |
 | Podman engine | `up`, `down`, `restart`, `ps`, `stats`, `prune` |
-| User session | `shell`, `run`, `enable`, `start`, `stop`, `kill`, `journal` |
+| User session | `shell`, `run`, `start`, `stop`, `kill`, `journal` |
 | Container access | `exec`, `run-in`, `clogs`, `cp`, `top` |
 | Subordinate IDs | `subid`, `subid-check`, `subid-reclaim` |
 | Other | `autostart`, `version` |
@@ -99,16 +99,10 @@ group when that identity can be validated from `SUDO_USER`/`SUDO_UID`.
 Everything after `--` is passed verbatim to the target command for `run`,
 `run-in`, and `cp`. Host filesystem mounts and ACL preparation are out of scope;
 the operator prepares any additional bind-mount sources before or immediately
-after `setup`. `setup` provisions the user and installs workload unit files, but
-it does not enable or start user services and does not enable linger by default.
-Use `up` or `start` explicitly after setup.
+after `setup`. `setup` provisions the user and installs the workload unit, but
+it does not start the workload; use `up` or `start` after setup.
 
-When persistent autostart is desired for a managed user, run
-`podmgr enable -u <user>`. This opts that user into linger + user-service
-enablement and starts the workload service immediately.
-
-For reboot recovery without enabling per-user linger, use label-gated
-`podmgr autostart`.
+For reboot recovery of the workload itself, use label-gated `podmgr autostart`.
 `autostart` scans all managed users and runs `podmgr up -u <user>` only when
 any service in that user's stack has label `podmgr.autostart=true`.
 One labeled service opts in the whole stack.
@@ -154,11 +148,7 @@ sudo systemctl enable --now podmgr-autostart.timer
 Fallback note: if your distribution package does not enable the timer in its
 post-install hook, run the re-enable command once after install.
 
-`podmgr enable` and `podmgr autostart` are complementary:
-- `enable`: per-user persistent systemd enablement + linger.
-- `autostart`: host-driven boot scan for stacks that explicitly opt in by label.
-
-If `podmgr enable` warns that `podman.socket` could not be enabled, retry it
+If `setup` warns that `podman.socket` could not be enabled, retry it
 manually for that user:
 
 ```sh
@@ -204,7 +194,7 @@ When you only want parse/syntax validation (no binary build), run:
 
 ```sh
 cd c/podmgr
-gcc -std=c11 -D_GNU_SOURCE -DPODMGR_VERSION='"1.4.0"' -I. -fsyntax-only \
+gcc -std=c11 -D_GNU_SOURCE -DPODMGR_VERSION='"1.5.0"' -I. -fsyntax-only \
   main.c config.c logging.c validation.c util.c \
   command_setup.c command_cleanup.c command_runtime.c \
   command_container.c command_report.c
@@ -254,7 +244,7 @@ options may be added; existing ones will not be removed or repurposed in 1.x.
 
 - User lifecycle: `setup`, `cleanup`, `reinstall`, `list`, `info`, `status`
 - Podman engine: `up`, `down`, `restart`, `ps`, `stats`, `prune`
-- User session: `shell`, `run`, `enable`, `start`, `stop`, `kill`, `journal`
+- User session: `shell`, `run`, `start`, `stop`, `kill`, `journal`
 - Container access: `exec`, `run-in`, `clogs`, `cp`, `top`
 - Subordinate IDs: `subid`, `subid-check`, `subid-reclaim`
 - Other: `autostart`, `version`, `--help`

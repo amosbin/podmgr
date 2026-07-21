@@ -30,7 +30,6 @@ typedef enum {
     CMD_PRUNE,
     CMD_SHELL,
     CMD_RUN,
-    CMD_ENABLE,
     CMD_START,
     CMD_STOP,
     CMD_KILL,
@@ -65,7 +64,6 @@ static int parse_command(const char *s, cmd_t *out)
     else if (strcmp(s, "prune") == 0) *out = CMD_PRUNE;
     else if (strcmp(s, "shell") == 0) *out = CMD_SHELL;
     else if (strcmp(s, "run") == 0) *out = CMD_RUN;
-    else if (strcmp(s, "enable") == 0) *out = CMD_ENABLE;
     else if (strcmp(s, "start") == 0) *out = CMD_START;
     else if (strcmp(s, "stop") == 0) *out = CMD_STOP;
     else if (strcmp(s, "kill") == 0) *out = CMD_KILL;
@@ -136,8 +134,6 @@ static void show_usage(void)
         "  USER SESSION / SHELL (login-as-the-host-user)\n"
         "    shell        Open an interactive login shell AS the host user\n"
         "    run          Run an arbitrary command in the user's session (-- <cmd...>)\n"
-        "    enable       Enable persistent autostart for the user's workload\n"
-        "                 (enables linger, starts user manager, enables+starts service)\n"
         "    start        Start the user's workload service\n"
         "    stop         Stop the user's workload service\n"
         "    kill         Stop the user's systemd service (alias of stop)\n"
@@ -396,7 +392,6 @@ int main(int argc, char *argv[])
     case CMD_PRUNE:       do_prune(user, compose, flag_all, flag_vols);     break;
     case CMD_SHELL:       do_shell(user, compose);                          break;
     case CMD_RUN:         do_run(user, compose, passthru_argv);             break;
-    case CMD_ENABLE:      do_enable(user);                                  break;
     case CMD_START:       do_start(user);                                   break;
     case CMD_STOP:        do_stop(user);                                    break;
     case CMD_KILL:        do_kill(user);                                    break;
