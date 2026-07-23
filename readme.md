@@ -87,6 +87,7 @@ Commands are grouped by concern:
 | Podman engine | `up`, `down`, `restart`, `ps`, `stats`, `prune` |
 | User session | `shell`, `run`, `start`, `stop`, `kill`, `journal` |
 | Container access | `exec`, `run-in`, `clogs`, `cp`, `top` |
+| Compose files | `adopt` |
 | Subordinate IDs | `subid`, `subid-check`, `subid-reclaim` |
 | Other | `autostart`, `version` |
 
@@ -97,7 +98,11 @@ assigns it to the managed user; the shared `PODMGR_BASE_DIR` and
 write/execute access, and the sudo-invoking operator is added to the `podmgr`
 group when that identity can be validated from `SUDO_USER`/`SUDO_UID`.
 Everything after `--` is passed verbatim to the target command for `run`,
-`run-in`, and `cp`. Host filesystem mounts and ACL preparation are out of scope;
+`run-in`, `cp`, and `adopt`. Use `podmgr adopt -u <user> -i <input>` to copy a
+file or directory into the compose directory. `-o`/`--output` selects an
+optional destination relative to that directory (for example,
+`-o app/config`); absolute paths and `.` or `..` components are rejected. Host
+filesystem mounts and ACL preparation are out of scope;
 the operator prepares any additional bind-mount sources before or immediately
 after `setup`. `setup` provisions the user and installs the workload unit, but
 it does not start the workload; use `up` or `start` after setup.
@@ -194,7 +199,7 @@ When you only want parse/syntax validation (no binary build), run:
 
 ```sh
 cd c/podmgr
-gcc -std=c11 -D_GNU_SOURCE -DPODMGR_VERSION='"1.5.0"' -I. -fsyntax-only \
+gcc -std=c11 -D_GNU_SOURCE -DPODMGR_VERSION='"1.5.1"' -I. -fsyntax-only \
   main.c config.c logging.c validation.c util.c \
   command_setup.c command_cleanup.c command_runtime.c \
   command_container.c command_report.c
@@ -246,6 +251,7 @@ options may be added; existing ones will not be removed or repurposed in 1.x.
 - Podman engine: `up`, `down`, `restart`, `ps`, `stats`, `prune`
 - User session: `shell`, `run`, `start`, `stop`, `kill`, `journal`
 - Container access: `exec`, `run-in`, `clogs`, `cp`, `top`
+- Compose file management: `adopt`
 - Subordinate IDs: `subid`, `subid-check`, `subid-reclaim`
 - Other: `autostart`, `version`, `--help`
 
@@ -254,7 +260,8 @@ options may be added; existing ones will not be removed or repurposed in 1.x.
 ### Options
 
 `-u`/`--user`, `-c`/`--compose-dir`, `-n`/`--container`, `-a`/`--all`,
-`-w`/`--volumes`, `-d`/`--df`, `-j`/`--json`, `-f`/`--file`, `-h`/`--help`,
+`-w`/`--volumes`, `-d`/`--df`, `-j`/`--json`, `-i`/`--input`,
+`-o`/`--output`, `-h`/`--help`,
 and the `--` passthrough behave as documented in `man podmgr`. Short and long
 forms are both stable.
 

@@ -176,7 +176,8 @@ static void show_usage(void)
         "  -h, --help               Show this help\n"
         "  --                       Everything after '--' is passed verbatim to the\n"
         "                           target command (run / run-in / cp / adopt).\n"
-        "  -f, --file <path>        adopt: source path to copy into the compose dir.\n"
+        "  -i, --input <path>       adopt: input file or directory to copy.\n"
+        "  -o, --output <path>      adopt: output path relative to the compose dir.\n"
         "\n"
         "NOTES:\n"
         "  setup        Provisions the user and installs units; it does not\n"
@@ -231,7 +232,8 @@ int main(int argc, char *argv[])
     int         flag_vols = 0;
     int         flag_df   = 0;
     int         flag_json = 0;
-    const char *adopt_src = NULL;
+    const char *adopt_input = NULL;
+    const char *adopt_output = NULL;
     int         passthru_index = -1;
 
     for (int i = 1; i < argc; i++) {
@@ -261,8 +263,10 @@ int main(int argc, char *argv[])
             compose = next_option_value(a, argc, argv, &i);
         } else if (match_option(a, "-n", "--container")) {
             container = next_option_value(a, argc, argv, &i);
-        } else if (match_option(a, "-f", "--file")) {
-            adopt_src = next_option_value(a, argc, argv, &i);
+        } else if (match_option(a, "-i", "--input")) {
+            adopt_input = next_option_value(a, argc, argv, &i);
+        } else if (match_option(a, "-o", "--output")) {
+            adopt_output = next_option_value(a, argc, argv, &i);
         } else if (strcmp(a, "-v") == 0 || strcmp(a, "--verbose") == 0) {
             /* already handled in pre-scan */
         } else if (strcmp(a, "-q") == 0 || strcmp(a, "--quiet") == 0) {
@@ -300,6 +304,8 @@ int main(int argc, char *argv[])
     if (container && !(cmd == CMD_EXEC || cmd == CMD_RUN_IN ||
                        cmd == CMD_CLOGS || cmd == CMD_TOP))
         log_die("-n/--container is only valid with exec, run-in, clogs, or top");
+    if ((adopt_input || adopt_output) && cmd != CMD_ADOPT)
+        log_die("-i/--input and -o/--output are only valid with adopt");
 
     char **passthru_argv = NULL;
     if (passthru_index >= 0) {
@@ -354,11 +360,11 @@ int main(int argc, char *argv[])
             log_die("cp requires both source and destination arguments");
 
         if (cmd == CMD_ADOPT) {
-            adopt_src = passthru_argv ? passthru_argv[0] : adopt_src;
-            if (!adopt_src || adopt_src[0] == '\0')
-                log_die("adopt requires a source path (use: podmgr adopt -u <user> -f <path>)");
+            adopt_input = passthru_argv ? passthru_argv[0] : adopt_input;
+            if (!adopt_input || adopt_input[0] == '\0')
+                log_die("adopt requires an input path (use: podmgr adopt -u <user> -i <path>)");
             if (passthru_argv && passthru_argv[1])
-                log_die("adopt accepts exactly one source path");
+                log_die("adopt accepts exactly one input path after '--'");
         }
 
         if (need_compose) {
@@ -401,7 +407,7 @@ int main(int argc, char *argv[])
     case CMD_CLOGS:       do_clogs(user, compose, container);               break;
     case CMD_CP:          do_cp(user, compose, passthru_argv);              break;
     case CMD_TOP:         do_top(user, compose, container);                 break;
-    case CMD_ADOPT:       do_adopt(user, compose, adopt_src);               break;
+    case CMD_ADOPT:       do_adopt(user, compose, adopt_input, adopt_output); break;
     case CMD_SUBID:       do_subid(user);                                   break;
     case CMD_SUBID_CHECK: do_subid_check();                                 break;
     case CMD_SUBID_RECLAIM: do_subid_reclaim();                             break;

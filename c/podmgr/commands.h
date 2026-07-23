@@ -59,7 +59,8 @@ void do_cp(const char *user, const char *compose_dir, char *const argv[]);
 void do_top(const char *user, const char *compose_dir, const char *container);
 
 /* Copy a local file/dir into the user's compose directory with user ownership. */
-void do_adopt(const char *user, const char *compose_dir, const char *src_path);
+void do_adopt(const char *user, const char *compose_dir,
+			  const char *input_path, const char *output_path);
 
 /* Follow the user's journal (replaces process with journalctl -f). */
 void do_journal(const char *user);

@@ -68,6 +68,69 @@ static const char *path_basename_const(const char *path)
         p--;
     return p;
 }
+
+static void validate_adopt_output(const char *path)
+{
+    if (!path || path[0] == '\0')
+        log_die("adopt output path must not be empty");
+    if (path[0] == '/')
+        log_die("adopt output path must be relative to the compose directory: %s", path);
+
+    const char *component = path;
+    for (const char *p = path;; p++) {
+        if (*p == '/' || *p == '\0') {
+            size_t len = (size_t)(p - component);
+            if (len == 0 || (len == 1 && component[0] == '.') ||
+                (len == 2 && component[0] == '.' && component[1] == '.'))
+                log_die("adopt output path contains an invalid component: %s", path);
+            if (*p == '\0')
+                break;
+            component = p + 1;
+        }
+    }
+}
+
+static void prepare_adopt_parent(const char *compose_dir, const char *dest_path,
+                                 const char *owner)
+{
+    char parent_path[PATH_MAX];
+    snprintf(parent_path, sizeof(parent_path), "%s", dest_path);
+    char *slash = strrchr(parent_path, '/');
+    if (!slash || slash == parent_path)
+        return;
+    *slash = '\0';
+    if (strcmp(parent_path, compose_dir) == 0)
+        return;
+
+    size_t compose_len = strlen(compose_dir);
+    for (char *p = parent_path + compose_len + 1;; p++) {
+        if (*p != '/' && *p != '\0')
+            continue;
+
+        char saved = *p;
+        *p = '\0';
+
+        struct stat st;
+        if (lstat(parent_path, &st) == 0) {
+            if (S_ISLNK(st.st_mode) || !S_ISDIR(st.st_mode))
+                log_die("adopt output parent is not a directory: %s", parent_path);
+        } else if (errno == ENOENT) {
+            if (mkdir(parent_path, 0755) != 0)
+                log_die("failed to create output directory '%s': %s", parent_path, strerror(errno));
+        } else {
+            log_die("cannot inspect output directory '%s': %s", parent_path, strerror(errno));
+        }
+
+        char *chown_argv[] = { PODMGR_BIN_CHOWN, (char *)owner, parent_path, NULL };
+        if (run_command(chown_argv) != 0)
+            log_die("failed to set ownership on output directory '%s'", parent_path);
+
+        *p = saved;
+        if (saved == '\0')
+            break;
+    }
+}
+
 void do_up(const char *user, const char *compose_dir)
 {
     ensure_managed_user(user);
@@ -196,31 +259,39 @@ void do_run(const char *user, const char *compose_dir, char *const argv[])
         log_die("run failed for '%s'", user);
 }
 
-void do_adopt(const char *user, const char *compose_dir, const char *src_path)
+void do_adopt(const char *user, const char *compose_dir,
+              const char *input_path, const char *output_path)
 {
     ensure_managed_user(user);
     ensure_compose_runtime_ready(user, compose_dir, 0);
 
-    if (!src_path || src_path[0] == '\0')
-        log_die("adopt requires a source path");
+    if (!input_path || input_path[0] == '\0')
+        log_die("adopt requires an input path");
 
     struct stat src_st;
-    if (lstat(src_path, &src_st) != 0)
-        log_die("cannot access source '%s': %s", src_path, strerror(errno));
+    if (lstat(input_path, &src_st) != 0)
+        log_die("cannot access input '%s': %s", input_path, strerror(errno));
 
     if (S_ISLNK(src_st.st_mode))
-        log_die("refusing to adopt symlink source '%s'", src_path);
+        log_die("refusing to adopt symlink input '%s'", input_path);
 
     if (!S_ISREG(src_st.st_mode) && !S_ISDIR(src_st.st_mode))
-        log_die("adopt supports only regular files and directories: %s", src_path);
+        log_die("adopt supports only regular files and directories: %s", input_path);
 
-    const char *base = path_basename_const(src_path);
+    const char *base = path_basename_const(input_path);
     if (!base || base[0] == '\0' || strcmp(base, ".") == 0 || strcmp(base, "..") == 0)
-        log_die("invalid source path for adopt: %s", src_path);
+        log_die("invalid input path for adopt: %s", input_path);
+
+    const char *relative_output = output_path ? output_path : base;
+    validate_adopt_output(relative_output);
 
     char dest_path[PATH_MAX];
-    if (snprintf(dest_path, sizeof(dest_path), "%s/%s", compose_dir, base) >= (int)sizeof(dest_path))
+    if (snprintf(dest_path, sizeof(dest_path), "%s/%s", compose_dir, relative_output) >= (int)sizeof(dest_path))
         log_die("destination path too long under compose-dir '%s'", compose_dir);
+
+    char owner[128];
+    snprintf(owner, sizeof(owner), "%s:%s", user, user);
+    prepare_adopt_parent(compose_dir, dest_path, owner);
 
     struct stat dst_st;
     if (lstat(dest_path, &dst_st) == 0)
@@ -229,20 +300,18 @@ void do_adopt(const char *user, const char *compose_dir, const char *src_path)
         log_die("cannot inspect destination '%s': %s", dest_path, strerror(errno));
 
     char *copy_argv[] = {
-        PODMGR_BIN_CP, "-a", "--", (char *)src_path, (char *)compose_dir, NULL
+        PODMGR_BIN_CP, "-a", "--", (char *)input_path, dest_path, NULL
     };
     if (run_command(copy_argv) != 0)
-        log_die("failed to copy '%s' into '%s'", src_path, compose_dir);
+        log_die("failed to copy '%s' to '%s'", input_path, dest_path);
 
-    char owner[128];
-    snprintf(owner, sizeof(owner), "%s:%s", user, user);
     char *chown_argv[] = {
         PODMGR_BIN_CHOWN, "-R", owner, dest_path, NULL
     };
     if (run_command(chown_argv) != 0)
         log_die("failed to set ownership on adopted path '%s'", dest_path);
 
-    log_info("adopted '%s' into '%s' for user '%s'", src_path, dest_path, user);
+    log_info("adopted '%s' into '%s' for user '%s'", input_path, dest_path, user);
 }
 
 void do_journal(const char *user)

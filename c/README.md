@@ -59,7 +59,8 @@ For the default layout (`/srv/podmgr/compose/<user>`), the expected flow is:
 
 1. `sudo podmgr setup -u <user>`
 2. Place `compose.yaml` or `compose.yml` into `/srv/podmgr/compose/<user>/`
-    - Preferred helper: `sudo podmgr adopt -u <user> -f ./compose.yaml`
+    - Preferred helper: `sudo podmgr adopt -u <user> -i ./compose.yaml`
+    - To choose a compose-relative destination: `sudo podmgr adopt -u <user> -i ./config -o app/config`
 3. Ensure ownership remains `<user>:<user>` for the per-user directory and
     compose file
 4. Run lifecycle commands such as `podmgr up -u <user>`

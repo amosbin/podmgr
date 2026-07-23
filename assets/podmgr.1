@@ -1,5 +1,5 @@
 .\" Manpage for podmgr.
-.TH PODMGR 1 "2026-07-21" "podmgr 1.5.0" "Rootless Podman system user manager"
+.TH PODMGR 1 "2026-07-23" "podmgr 1.5.1" "Rootless Podman system user manager"
 .SH NAME
 podmgr \- create and manage least-privileged host users for rootless Podman workloads
 .SH SYNOPSIS
@@ -145,9 +145,16 @@ Copy files to or from a container
 Show the process table inside a container.
 .SS Compose file management
 .TP
-.B adopt \-f \fIpath
+.B adopt \-i \fIinput\fR [\-o \fIoutput\fR]
 Copy a local file or directory into the user's compose directory and set
-ownership to the target user.
+ownership to the target user. If
+.B output
+is omitted, the input basename is used. Output must be a relative path below
+the compose directory; absolute paths and
+.B .
+or
+.B ..
+components are rejected.
 .SS Subordinate IDs
 .TP
 .B subid
@@ -217,9 +224,19 @@ For
 .BR list " and " users ,
 emit JSON output.
 .TP
-.BR \-f ", " \-\-file " " \fIpath\fR
-Source path for
+.BR \-i ", " \-\-input " " \fIpath\fR
+Input file or directory for
 .B adopt .
+.TP
+.BR \-o ", " \-\-output " " \fIpath\fR
+Output path for
+.BR adopt ,
+relative to the user's compose directory. Missing parent directories are
+created. Absolute paths and
+.B .
+or
+.B ..
+components are rejected.
 .TP
 .BR \-h ", " \-\-help
 Show usage and exit.
